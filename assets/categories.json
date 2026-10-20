@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "categories": {
+    "idle": {
+      "files": [
+        "lulu_004.gif",
+        "lulu_008.gif"
+      ],
+      "track": "auto"
+    },
+    "walk": {
+      "files": [
+        "lulu_007.gif"
+      ],
+      "track": "card"
+    },
+    "sleep": {
+      "files": [
+        "lulu_006.gif"
+      ],
+      "track": "card"
+    },
+    "eat": {
+      "files": [
+        "lulu_003.gif"
+      ],
+      "track": "card"
+    },
+    "drink": {
+      "files": [
+        "lulu_003.gif"
+      ],
+      "track": "card"
+    },
+    "happy": {
+      "files": [
+        "lulu_009.gif"
+      ],
+      "track": "transparent"
+    },
+    "angry": {
+      "files": [
+        "lulu_002.gif"
+      ],
+      "track": "transparent"
+    },
+    "sad": {
+      "files": [
+        "lulu_001.gif"
+      ],
+      "track": "transparent"
+    },
+    "bath": {
+      "files": [
+        "lulu_005.gif"
+      ],
+      "track": "card"
+    },
+    "unassigned": {
+      "files": [],
+      "track": "auto"
+    }
+  },
+  "tracks": {
+    "lulu_001.gif": "transparent",
+    "lulu_002.gif": "transparent",
+    "lulu_003.gif": "card",
+    "lulu_004.gif": "transparent",
+    "lulu_005.gif": "card",
+    "lulu_006.gif": "card",
+    "lulu_007.gif": "card",
+    "lulu_008.gif": "card",
+    "lulu_009.gif": "transparent"
+  }
+}

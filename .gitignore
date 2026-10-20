@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
+
+# 打包产物（体积大，可重新生成）
+dist/
+build/
+*.spec
+
+# 运行期生成
+config.json
+
+# 素材采集原件与开发期账本（体积大 / 依赖 raw，不入库）
+assets/raw/
+assets/.index.json
+assets/id_map.csv
+assets/prepare_report.json
+assets/contact_sheet_*.png
+assets/tray_icon.png
