@@ -81,3 +81,47 @@ def test_apply_asset_update_never_raises_on_fetch_error(tmp_path):
         raise RuntimeError("boom")
 
     assert apply_asset_update({"a.gif": md5_bytes(b"x")}, BASE, tmp_path, fetch) == []
+
+
+def test_apply_asset_update_survives_bad_key_and_updates_the_rest(tmp_path):
+    changes = {
+        "evil\x00.gif": md5_bytes(b"whatever"),
+        "good.gif": md5_bytes(b"ok"),
+    }
+
+    def fetch(url: str) -> bytes:
+        if url.endswith("good.gif"):
+            return b"ok"
+        return b"whatever"
+
+    done = apply_asset_update(changes, BASE, tmp_path, fetch)
+
+    assert "good.gif" in done
+    assert (tmp_path / "good.gif").read_bytes() == b"ok"
+
+
+def test_apply_asset_update_keeps_going_when_one_fetch_fails(tmp_path):
+    changes = {
+        "bad.gif": md5_bytes(b"nope"),
+        "good.gif": md5_bytes(b"ok"),
+    }
+
+    def fetch(url: str) -> bytes:
+        if url.endswith("bad.gif"):
+            raise RuntimeError("boom")
+        return b"ok"
+
+    done = apply_asset_update(changes, BASE, tmp_path, fetch)
+
+    assert done == ["good.gif"]
+    assert (tmp_path / "good.gif").read_bytes() == b"ok"
+
+
+def test_safe_relpath_rejects_nul_byte():
+    assert safe_relpath("a\x00b.gif") is None
+    assert safe_relpath("a/\x00b.gif") is None
+
+
+def test_asset_diff_ignores_md5_case(tmp_path):
+    _write(tmp_path, "categories.json", b"{case}")
+    assert asset_diff({"categories.json": md5_bytes(b"{case}").upper()}, tmp_path) == {}

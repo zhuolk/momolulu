@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
 
-from pet.download import UpdateError, md5_bytes, md5_file
+from pet.download import md5_bytes, md5_file
+
+logger = logging.getLogger(__name__)
 
 LATEST_URL = "https://raw.githubusercontent.com/zhuolk/momolulu/main/update/latest.json"
 
@@ -102,6 +105,8 @@ def safe_relpath(rel: str) -> Path | None:
     if not isinstance(rel, str) or not rel:
         return None
     text = rel.replace("\\", "/")
+    if "\x00" in text:
+        return None
     if text.startswith("/") or ":" in text.split("/")[0]:
         return None
     parts = [part for part in text.split("/") if part not in ("", ".")]
@@ -127,8 +132,9 @@ def asset_diff(remote_files: dict[str, str], local_dir: Path) -> dict[str, str]:
         target = safe_relpath(rel)
         if target is None:
             continue
-        if _local_md5(local_dir / target) != digest:
-            changes[rel] = digest
+        want = str(digest).strip().lower()
+        if _local_md5(local_dir / target) != want:
+            changes[rel] = want
     return changes
 
 
@@ -145,13 +151,18 @@ def apply_asset_update(changes: dict[str, str], base: str, local_dir: Path, fetc
         try:
             data = fetch(base + rel)
             if md5_bytes(data) != digest:
+                logger.warning("素材 %s 校验不通过，已跳过", rel)
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_bytes(data)
             os.replace(tmp, dest)
-        except Exception:  # noqa: BLE001 - 单个素材失败只跳过，绝不能拖垮整个更新
+        except Exception as exc:  # noqa: BLE001 - 单个素材失败只跳过，绝不能拖垮整个更新
+            logger.warning("素材 %s 更新失败，已跳过：%s", rel, exc)
             continue
         finally:
-            tmp.unlink(missing_ok=True)
+            try:
+                tmp.unlink(missing_ok=True)
+            except (OSError, ValueError):
+                pass
         done.append(rel)
     return done
