@@ -15,15 +15,19 @@ import argparse
 import json
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 
 if __package__ in (None, ""):  # 允许 `python tools_cli/build.py` 直接运行
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pet.config import DEFAULTS  # noqa: E402
+from pet.download import md5_file, sha256_file  # noqa: E402
+from pet.version import VERSION  # noqa: E402
 
 APP_NAME = "momolulu"
 ENTRY = "main.py"
+REPO = "zhuolk/momolulu"
 
 
 def build_args(project_root: Path, out_dir: Path, name: str = APP_NAME) -> list[str]:
@@ -76,6 +80,66 @@ def _dir_size_mb(path: Path) -> float:
     return total / 1e6
 
 
+def _assets_base(repo: str) -> str:
+    return f"https://raw.githubusercontent.com/{repo}/main/assets/"
+
+
+def asset_manifest(assets_dir: Path) -> dict[str, str]:
+    """运行期需要的素材清单：`processed/*.gif` 与 `categories.json`，键相对 `assets/`。"""
+    assets_dir = Path(assets_dir)
+    names = sorted(p.name for p in (assets_dir / "processed").glob("*.gif"))
+    rels = [f"processed/{name}" for name in names]
+    if (assets_dir / "categories.json").is_file():
+        rels.append("categories.json")
+    return {rel: md5_file(assets_dir / rel) for rel in rels}
+
+
+def build_zip(app_dir: Path, out_zip: Path) -> Path:
+    """把产物目录打成一个 zip（zip 根为目录名）；`config.json` 必须排除。
+
+    它是每台机器运行期生成/修改的，`stage_assets()` 往产物里塞的是默认值，
+    打进去会在整目录交换后覆盖用户的缩放 / 位置 / 模块开关。
+    """
+    app_dir = Path(app_dir)
+    out_zip = Path(out_zip)
+    out_zip.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        for item in sorted(app_dir.rglob("*")):
+            if not item.is_file() or item.name == "config.json":
+                continue
+            zf.write(item, Path(app_dir.name) / item.relative_to(app_dir))
+    return out_zip
+
+
+def write_latest_json(
+    out_path: Path,
+    version: str,
+    notes: str,
+    zip_path: Path,
+    assets_dir: Path | None = None,
+    repo: str = REPO,
+) -> Path:
+    """生成 `update/latest.json` 的内容；程序端读它决定要不要更新。"""
+    zip_path = Path(zip_path)
+    payload = {
+        "version": version,
+        "notes": notes,
+        "package": {
+            "url": f"https://github.com/{repo}/releases/download/v{version}/{zip_path.name}",
+            "sha256": sha256_file(zip_path),
+            "size": zip_path.stat().st_size,
+        },
+        "assets": {
+            "base": _assets_base(repo),
+            "files": asset_manifest(assets_dir) if assets_dir is not None else {},
+        },
+    }
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_path
+
+
 def run_build(
     project_root: Path, out_dir: Path | None = None, name: str = APP_NAME
 ) -> int:
@@ -94,6 +158,15 @@ def run_build(
     stage_assets(project_root, out_dir, name)
     app_dir = out_dir / name
     print(f"产物目录：{app_dir}（{_dir_size_mb(app_dir):.1f}MB）")
+    zip_path = build_zip(app_dir, out_dir / f"{name}-{VERSION}.zip")
+    latest = write_latest_json(
+        out_dir / "latest.json", VERSION, "", zip_path, assets_dir=project_root / "assets"
+    )
+    print(f"整包：{zip_path}（{zip_path.stat().st_size / 1e6:.1f}MB）")
+    print(f"清单：{latest}")
+    print("发布：")
+    print(f"  1. gh release create v{VERSION} \"{zip_path}\"")
+    print(f"  2. 把 {latest} 覆盖到仓库 update/latest.json 后 git push")
     return 0
 
 

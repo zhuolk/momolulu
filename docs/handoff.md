@@ -131,3 +131,13 @@ python -m pytest -q        # 期望 155 passed
 注意：**Trae 的对话历史不在仓库里**——它由客户端 / 云端账号管理，本机没有可搬运的会话文件
 （已确认 `%APPDATA%\Trae\User\workspaceStorage\` 下没有 chatSessions 之类的记录）。
 跨设备靠的是"仓库 + 本交接文档"，或在新客户端登录同一 Trae 账号看账号下的历史会话。
+
+## 发版（自动更新源）
+
+1. 改 `pet/version.py` 里的 `VERSION`
+2. `python tools_cli/build.py`
+3. `gh release create v<version> dist/momolulu-<version>.zip`
+4. 把 `dist/latest.json` 覆盖到仓库的 `update/latest.json`，`git push`
+5. 素材有变动时 `assets/` 已在 git 里，push 完即生效
+
+注意 `raw.githubusercontent.com` 有几分钟 CDN 缓存，push 完对方不一定立刻看到。
