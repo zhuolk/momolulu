@@ -10,9 +10,12 @@ import json
 import logging
 import os
 import re
+import shutil
+import zipfile
 from pathlib import Path
 
 from pet.download import md5_bytes, md5_file
+from pet.download import UpdateError, download_file, sha256_file
 
 logger = logging.getLogger(__name__)
 
@@ -244,3 +247,76 @@ def write_updater_bat(path: Path, text: str) -> Path:
     # 默认的 newline=None 会把其中的 \n 再翻译一次，写出 \r\r\n。
     path.write_text(text, encoding="mbcs", newline="")
     return path
+
+
+def _download_zip(info: dict, temp_root: Path, download) -> Path:
+    package = info.get("package") or {}
+    version = info.get("version") or "unknown"
+    work = Path(temp_root) / version
+    work.mkdir(parents=True, exist_ok=True)
+    zip_path = work / f"momolulu-{version}.zip"
+    engine = download if download is not None else download_file
+    engine(package["url"], zip_path)
+    if not zip_path.is_file():
+        raise UpdateError("下载未产生文件")
+    if zip_path.stat().st_size != package["size"]:
+        raise UpdateError("整包大小与 latest.json 不符")
+    if sha256_file(zip_path) != package["sha256"]:
+        raise UpdateError("整包 sha256 校验失败")
+    return zip_path
+
+
+def _extract(zip_path: Path, staged_root: Path) -> Path:
+    """解压并展平：zip 根是 `momolulu/`，处理后 `staged_root` 本身就是新的安装目录。"""
+    staged_root = Path(staged_root)
+    shutil.rmtree(staged_root, ignore_errors=True)
+    staged_root.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(staged_root)
+    top = list(staged_root.iterdir())
+    if len(top) == 1 and top[0].is_dir():
+        holder = staged_root / "_flatten"
+        top[0].rename(holder)
+        for child in list(holder.iterdir()):
+            shutil.move(str(child), str(staged_root / child.name))
+        holder.rmdir()
+    if not (staged_root / "momolulu.exe").is_file():
+        raise UpdateError("整包结构异常：找不到 momolulu.exe")
+    return staged_root
+
+
+def prepare_program_update(
+    info: dict, install_dir: Path, temp_root: Path, download=None, retries: int = 30
+) -> Path:
+    """下载并校验整包、解压到暂存目录、写出 updater.bat；失败时不留任何中间产物。"""
+    package = info.get("package")
+    if not isinstance(package, dict):
+        raise UpdateError("latest.json 未提供程序整包")
+    install_dir = Path(install_dir).resolve()
+    temp_root = Path(temp_root)
+    # 暂存目录必须在安装目录之外：否则 bat 执行目录交换时会连脚本自己一起搬走。
+    temp_abs = temp_root.resolve()
+    if temp_abs == install_dir or install_dir in temp_abs.parents:
+        raise UpdateError("暂存目录不能位于安装目录内，否则更新脚本会把自己搬走")
+    staged_root = temp_root / "momolulu.new"
+    version = info.get("version") or "unknown"
+    work_dir = temp_root / version
+
+    def _clear() -> None:
+        # zip 落在 <temp_root>/<version>/，失败时连同整个工作目录一起清掉。
+        shutil.rmtree(staged_root, ignore_errors=True)
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+    try:
+        downloaded = _download_zip(info, temp_root, download)
+        staged = _extract(downloaded, staged_root)
+        backup = install_dir.with_name(install_dir.name + ".old")
+        text = build_updater_bat(install_dir, staged, backup, retries=retries)
+        return write_updater_bat(temp_root / "updater.bat", text)
+    except UpdateError:
+        _clear()
+        raise
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        # UnicodeEncodeError 继承自 ValueError，会被这里兜住（bat 的 mbcs 写盘失败）。
+        _clear()
+        raise UpdateError(f"准备更新失败：{exc}") from exc
