@@ -166,3 +166,79 @@ def apply_asset_update(changes: dict[str, str], base: str, local_dir: Path, fetc
                 pass
         done.append(rel)
     return done
+
+
+_BAT_TEMPLATE = """@echo off
+setlocal
+set "TARGET={target}"
+set "NEW={new}"
+set "OLD={old}"
+set "EXE={exe}"
+set /a tries=0
+
+rem 1. 重试把安装目录改名成备份目录：能改名成功就说明噜噜确实退干净了。
+rem    （不对 PID 打转：onedir 的 exe 是 bootloader，父子进程谁持有目录句柄不确定）
+:retry
+rmdir /s /q "%OLD%" >nul 2>&1
+move "%TARGET%" "%OLD%" >nul 2>&1
+if not exist "%TARGET%" goto swapped
+set /a tries+=1
+if %tries% geq {retries} goto failed
+ping -n 2 127.0.0.1 >nul
+goto retry
+
+rem 2. 把旧目录的 config.json 搬进新目录，保住用户的缩放 / 位置 / 模块开关
+:swapped
+if exist "%OLD%\\config.json" copy /y "%OLD%\\config.json" "%NEW%\\" >nul 2>&1
+if exist "%TARGET%" rmdir /s /q "%TARGET%" >nul 2>&1
+
+rem 3. 新目录顶替安装目录
+move "%NEW%" "%TARGET%" >nul 2>&1
+if exist "%TARGET%\\%EXE%" goto ok
+
+rem 交换失败：把备份改回来再启动，绝不让噜噜留在跑不起来的状态
+:rollback
+rmdir /s /q "%TARGET%" >nul 2>&1
+move "%OLD%" "%TARGET%" >nul 2>&1
+start "" "%TARGET%\\%EXE%"
+goto done
+
+:ok
+rem 4. 删掉备份（失败就留着，下次启动再清）
+rmdir /s /q "%OLD%" >nul 2>&1
+rem 5. 启动新版
+start "" "%TARGET%\\%EXE%"
+goto done
+
+:failed
+rem 改名一直没成功说明噜噜还活着，原目录完好，直接把它拉起来
+start "" "%TARGET%\\%EXE%"
+
+:done
+endlocal
+"""
+
+
+def build_updater_bat(
+    install_dir: Path,
+    staged_dir: Path,
+    backup_dir: Path,
+    exe_name: str = "momolulu.exe",
+    retries: int = 30,
+) -> str:
+    """生成目录交换脚本：等待噜噜退出 -> 搬 config.json -> 交换 -> 删备份 -> 启动新版。"""
+    return _BAT_TEMPLATE.format(
+        target=Path(install_dir),
+        new=Path(staged_dir),
+        old=Path(backup_dir),
+        exe=exe_name,
+        retries=int(retries),
+    ).replace("\n", "\r\n")
+
+
+def write_updater_bat(path: Path, text: str) -> Path:
+    """用 Windows ANSI 码页写盘，含中文的安装路径才能被 cmd 正确解析。"""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="mbcs")
+    return path
