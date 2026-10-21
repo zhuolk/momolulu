@@ -6,6 +6,7 @@ import pytest
 from pet.download import (
     UpdateError,
     check_redirect,
+    download_file,
     fetch_bytes,
     is_allowed_url,
     md5_bytes,
@@ -88,3 +89,57 @@ def test_fetch_bytes_wraps_oserror_as_update_error():
 
     with pytest.raises(UpdateError):
         fetch_bytes("https://github.com/x", opener=Boom())
+
+
+class ChunkedResponse:
+    """按块产出字节，模拟 download_file 的流式 read(size)。"""
+
+    def __init__(self, chunks: list[bytes]):
+        self._chunks = list(chunks)
+
+    def read(self, size: int = -1) -> bytes:
+        return self._chunks.pop(0) if self._chunks else b""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class ChunkedOpener:
+    def __init__(self, chunks: list[bytes]):
+        self.chunks = chunks
+        self.urls = []
+
+    def open(self, url, timeout=None):
+        self.urls.append(getattr(url, "full_url", url))
+        return ChunkedResponse(self.chunks)
+
+
+def test_download_file_writes_all_bytes_and_returns_path(tmp_path):
+    opener = ChunkedOpener([b"aa", b"bb", b"cc"])
+    dest = tmp_path / "pkg.zip"
+    result = download_file("https://github.com/x", dest, opener=opener)
+    assert isinstance(dest, Path)
+    assert result == dest
+    assert dest.read_bytes() == b"aa" + b"bb" + b"cc"
+
+
+def test_download_file_removes_dest_and_leaves_no_residue_on_failure(tmp_path):
+    class Boom:
+        def open(self, url, timeout=None):
+            raise OSError("断网了")
+
+    dest = tmp_path / "pkg.zip"
+    dest.write_bytes(b"stale")
+    with pytest.raises(UpdateError):
+        download_file("https://github.com/x", dest, opener=Boom())
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_file_rejects_non_whitelisted_url_without_touching_network(tmp_path):
+    opener = ChunkedOpener([b"nope"])
+    with pytest.raises(UpdateError):
+        download_file("http://raw.githubusercontent.com/x", tmp_path / "pkg.zip", opener=opener)
+    assert opener.urls == []

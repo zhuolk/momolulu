@@ -75,7 +75,13 @@ def fetch_bytes(url: str, timeout: float = DEFAULT_TIMEOUT, opener=None) -> byte
 
 
 def download_file(url: str, dest: Path, timeout: float = DEFAULT_TIMEOUT, opener=None) -> Path:
-    """流式下载到 dest（54MB 的整包不能整体读进内存）。"""
+    """流式下载到 dest（54MB 的整包不能整体读进内存）。
+
+    dest 契约：
+    - dest 应当是临时/草稿路径，不要在最终文件路径上直接调用本函数；
+    - 失败时该路径会被删除，不留残留（已存在的同名文件同样会被清掉）；
+    - 把下载好的文件原子替换到最终位置由调用方负责（例如 os.replace）。
+    """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
