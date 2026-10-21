@@ -68,6 +68,37 @@ def test_freeze_unfreeze_and_passthrough(qapp, tmp_path):
     s.set_passthrough(False); assert not (s.windowFlags() & Qt.WindowTransparentForInput)
 
 
+def test_passthrough_toggle_keeps_window_visible(qapp, tmp_path):
+    """切穿透不能让噜噜消失：`setWindowFlags` 会重建原生窗口并隐藏它，必须重新 show。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    s.show()
+    assert s.isVisible() is True
+    s.set_passthrough(True)
+    assert s.isVisible() is True
+    s.set_passthrough(False)
+    assert s.isVisible() is True
+    s.hide()
+
+
+def test_always_on_top_toggle_keeps_window_visible(qapp, tmp_path):
+    """同一类缺陷：改窗口标志后不能因为 `isVisible()` 已变 False 而漏掉 show。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    s.show()
+    s.set_always_on_top(False)
+    assert s.isVisible() is True
+    s.set_always_on_top(True)
+    assert s.isVisible() is True
+    s.hide()
+
+
+def test_passthrough_does_not_resurrect_hidden_window(qapp, tmp_path):
+    """本就隐藏着的窗口，切穿透不应把它弹出来。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    s.hide()
+    s.set_passthrough(True)
+    assert s.isVisible() is False
+
+
 def test_render_frame_transparent_keeps_alpha(qapp):
     frame = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
     frame.putpixel((40, 40), (255, 0, 0, 255))

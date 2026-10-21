@@ -12,7 +12,7 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from pet.config import get
 
 DEFAULT_EDGE_PX = 24
-DEFAULT_STRIP_PX = 48
+DEFAULT_STRIP_PX = 24
 
 
 def hidden_x(

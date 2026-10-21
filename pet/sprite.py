@@ -27,7 +27,7 @@ MAX_MOVIE_CACHE = 3
 DRAG_THRESHOLD = 4
 
 PLACEHOLDER_SIZE = 160
-STRIP_PX = 48  # 贴边隐藏缩回后，露在屏幕内的桔子窄条宽度
+STRIP_PX = 24  # 贴边隐藏缩回后，露在屏幕内的桔子窄条宽度
 _CLICK_WINDOW_S = 5.0
 _FAST_CLICK_COUNT = 5
 
@@ -308,14 +308,10 @@ class Sprite(QWidget):
             self.play(category, once=False)
 
     def set_always_on_top(self, on: bool) -> None:
-        """切换「始终置顶」；置顶状态未变化时不重设窗口标志。"""
+        """切换「始终置顶」。"""
         flags = self.windowFlags()
-        if bool(flags & Qt.WindowStaysOnTopHint) == bool(on):
-            return
-        flags = (flags | Qt.WindowStaysOnTopHint) if on else (flags & ~Qt.WindowStaysOnTopHint)
-        self.setWindowFlags(flags)
-        if self.isVisible():
-            self.show()
+        target = (flags | Qt.WindowStaysOnTopHint) if on else (flags & ~Qt.WindowStaysOnTopHint)
+        self._apply_window_flags(target)
 
     # ------------------------------------------------------------ 冻结与穿透
 
@@ -337,9 +333,21 @@ class Sprite(QWidget):
     def set_passthrough(self, on: bool) -> None:
         """切换鼠标穿透：开启后本窗口不拦截鼠标事件。"""
         flags = self.windowFlags()
-        flags = (flags | Qt.WindowTransparentForInput) if on else (flags & ~Qt.WindowTransparentForInput)
+        target = (flags | Qt.WindowTransparentForInput) if on else (flags & ~Qt.WindowTransparentForInput)
+        self._apply_window_flags(target)
+
+    def _apply_window_flags(self, flags) -> None:
+        """重设窗口标志并保住可见性。
+
+        `setWindowFlags()` 会重建原生窗口、把窗口隐藏（Windows 上实测 `isVisible()`
+        立刻变 False），所以必须在调用**之前**记住可见状态，之后主动 `show()`；
+        若按调用后的 `isVisible()` 判断，窗口就再也回不来了（切穿透后噜噜直接消失）。
+        """
+        if flags == self.windowFlags():
+            return
+        was_visible = self.isVisible()
         self.setWindowFlags(flags)
-        if self.isVisible():
+        if was_visible:
             self.show()
 
     # ------------------------------------------------------------ 鼠标交互
