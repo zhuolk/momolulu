@@ -56,6 +56,25 @@ def test_check_is_silent_on_every_failure(tmp_path):
     assert check_for_update("0.1.0", tmp_path, latest_url=URL, fetch=lambda url: b"oops") is None
 
 
+def test_check_is_silent_on_non_update_error(tmp_path):
+    # check_for_update 用 `except Exception` 兜底：非 UpdateError 的意外异常也必须静默降级。
+    # 这里刻意用与 UpdateError 无继承关系的具体异常，收窄成 `except UpdateError` 时会立刻暴露。
+    def boom_runtime(url):
+        raise RuntimeError("意外异常，且不是 UpdateError")
+
+    assert check_for_update("0.1.0", tmp_path, latest_url=URL, fetch=boom_runtime) is None
+
+    def boom_value(url):
+        raise ValueError("同样不是 UpdateError")
+
+    assert check_for_update("0.1.0", tmp_path, latest_url=URL, fetch=boom_value) is None
+
+    def boom_type(url):
+        raise TypeError("也不是 UpdateError")
+
+    assert check_for_update("0.1.0", tmp_path, latest_url=URL, fetch=boom_type) is None
+
+
 def test_update_check_thread_emits_result(qapp, tmp_path):
     payload = _payload("0.2.0", {"categories.json": md5_bytes(b"x")})
     thread = UpdateCheckThread("0.1.0", tmp_path, latest_url=URL, fetch=lambda url: payload)
