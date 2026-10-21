@@ -3,8 +3,8 @@
   "notes": "",
   "package": {
     "url": "https://github.com/zhuolk/momolulu/releases/download/v0.1.0/momolulu-0.1.0.zip",
-    "sha256": "b559f43b0e08d59aa0dc12cffee301adb7c9f59913a00283b0457541a5d519de",
-    "size": 56629576
+    "sha256": "16d1e0f6608fe1775703d892a80b55f069ad42222f94c3cd9160ad8c8b7e8c65",
+    "size": 56406759
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
