@@ -93,7 +93,8 @@ class UpdatePrompt(QWidget):
     def _accept(self) -> None:
         if self._busy:
             return
-        self.hide()
+        # 不 hide()：下载期间要靠这个窗口显示「正在下载…」与失败提示（设计 §7.4），
+        # 隐藏由调用方在下载成功、准备退出重启时负责。
         self.accepted.emit()
 
     def _decline(self) -> None:
@@ -118,7 +119,9 @@ class UpdatePrompt(QWidget):
     def _move_near_anchor(self, anchor_x: int, anchor_y: int) -> None:
         x = anchor_x - self.width() // 2
         y = anchor_y - self.height() - 8
-        screen = QApplication.screenAt(QPoint(anchor_x, anchor_y))
+        # screenAt 对屏幕外坐标返回 None（多屏死区、噜噜贴边时会出现），
+        # 此时兜底到主屏，否则弹窗会落在谁都看不见的地方。
+        screen = QApplication.screenAt(QPoint(anchor_x, anchor_y)) or QApplication.primaryScreen()
         if screen is not None:
             area = screen.availableGeometry()
             x = max(area.left(), min(x, area.right() - self.width() + 1))

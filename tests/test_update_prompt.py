@@ -50,3 +50,26 @@ def test_busy_disables_buttons_and_shows_status(qapp):
     assert p.is_busy is False
     assert all(b.isEnabled() for b in buttons(p).values())
     assert "更新失败，已保留当前版本" in p.body_text()
+
+
+def test_accept_keeps_prompt_visible_for_busy_feedback(qapp):
+    p = UpdatePrompt()
+    p.show_version("0.2.0")
+    assert p.isVisible() is True
+    p._accept()
+    assert p.isVisible() is True
+    p.set_busy(True)
+    assert p.isVisible() is True
+    assert "正在下载…" in p.body_text()
+
+
+def test_anchor_offscreen_is_clamped_into_screen(qapp):
+    p = UpdatePrompt()
+    area = qapp.primaryScreen().availableGeometry()
+
+    p.show_version("0.2.0", anchor=(-9999, -9999))
+    assert area.left() <= p.x() and area.top() <= p.y()
+
+    p.show_version("0.2.0", anchor=(99999, 99999))
+    assert p.x() + p.width() <= area.right() + 1
+    assert p.y() + p.height() <= area.bottom() + 1
