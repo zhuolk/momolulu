@@ -1,0 +1,26 @@
+{
+  "version": "0.1.0",
+  "notes": "",
+  "package": {
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.1.0/momolulu-0.1.0.zip",
+    "sha256": "b559f43b0e08d59aa0dc12cffee301adb7c9f59913a00283b0457541a5d519de",
+    "size": 56629576
+  },
+  "assets": {
+    "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
+    "files": {
+      "processed/lulu_001.gif": "b2d246c5f9728cb70b32446f1db21468",
+      "processed/lulu_002.gif": "5d5fe993c04b009d475079936d3b25d4",
+      "processed/lulu_003.gif": "a8eaaedc69eae6902e2f8f0aba2d5d45",
+      "processed/lulu_004.gif": "6b046b674f71f464bec034a505871624",
+      "processed/lulu_005.gif": "4e8a781890ba635c660b1aef1bc8db45",
+      "processed/lulu_006.gif": "43e523dde22b12e76d9d6732ecd2398c",
+      "processed/lulu_007.gif": "165de25e79b78a7dcd9e3fc537f9d194",
+      "processed/lulu_008.gif": "ef34aa2b43a4a1c40339701d05deb232",
+      "processed/lulu_009.gif": "11b0f07844f20ae85afde91287449988",
+      "processed/lulu_010.gif": "368bd65e15dfb02e0ca9b0a5a328865e",
+      "processed/lulu_011.gif": "3ae5ca84057f9be3f6f9256f35d0ef94",
+      "categories.json": "2baa78e1e2c731417e56cdc3c42c5db8"
+    }
+  }
+}
