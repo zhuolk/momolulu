@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import random
+import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -20,13 +23,18 @@ from pet.autostart import default_command, set_enabled, sync
 from pet.behavior import PRIORITY_MODULE, Behavior
 from pet.catalog import load_categories, pick
 from pet.config import load_config, save_config
+from pet.download import fetch_bytes
 from pet.edge_hide import EdgeHider
 from pet.sprite import Sprite
 from pet.tray import Tray, ensure_tray_icon
+from pet.update_runner import ProgramUpdateThread, UpdateCheckThread
+from pet.updater import LATEST_URL, apply_asset_update
+from pet.version import VERSION
 from pet.winutil import is_foreground_fullscreen, should_hide_pet
 from ui.menu import MENU_LABELS, MenuState, build_menu
 from ui.settings_dialog import SettingsDialog
 from ui.toast import Toast
+from ui.update_prompt import UpdatePrompt
 
 _DEFAULT_MARGIN = 40
 _SAVE_DELAY_MS = 500
@@ -34,6 +42,8 @@ _TICK_MS = 100
 _FS_CHECK_MS = 1000
 _MODULE_TICK_MS = 1000
 _TOAST_MS = 6000
+_UPDATE_CHECK_DELAY_MS = 5000
+_ASSET_TOAST = "噜噜换新衣服啦"
 
 CLICK_LINES = ("噜噜~", "摸摸头", "咕噜咕噜", "噜噜在这儿")
 FAST_CLICK_LINE = "噜噜生气啦！"
@@ -146,6 +156,13 @@ class PetApp:
         self._start_ui()
         self._start_tray()
         self._init_modules()
+        self._update_info: dict | None = None
+        self._update_thread = None
+        self._program_thread = None
+        self._update_prompt = UpdatePrompt()
+        self._update_prompt.accepted.connect(self._update_now)
+        self._update_prompt.declined.connect(self._dismiss_update_prompt)
+        self._schedule_update_check()
 
     # ------------------------------------------------------------ 信号接线
 
@@ -203,12 +220,15 @@ class PetApp:
 
     def _menu_state(self) -> MenuState:
         pomodoro = self.modules.get("pomodoro")
+        info = self._update_info
+        pending = info.get("version") if isinstance(info, dict) and info.get("package") else None
         return MenuState(
             visible=self.sprite.isVisible(),
             passthrough=bool(self.config.get("pet", {}).get("passthrough", False)),
             autostart=self._autostart,
             modules=self._module_flags(),
             pomodoro_running=bool(getattr(pomodoro, "running", False)),
+            update_version=pending,
         )
 
     def _build_menu(self) -> QMenu:
@@ -222,6 +242,7 @@ class PetApp:
             "pomodoro": self._pomodoro,
             "open_settings": self._open_settings,
             "toggle_autostart": self._toggle_autostart,
+            "update_now": self._update_now,
             "quit": self._quit,
         }
 
@@ -399,6 +420,81 @@ class PetApp:
             if module.enabled:
                 module.tick(now)
 
+    # ------------------------------------------------------------ 自动更新
+
+    def _schedule_update_check(self) -> None:
+        """启动 5 秒后检查一次更新；脚本模式下不检查（源码目录不是可替换的安装目录）。"""
+        if not getattr(sys, "frozen", False):
+            return
+        QTimer.singleShot(_UPDATE_CHECK_DELAY_MS, self._start_update_check)
+
+    def _start_update_check(self) -> None:
+        thread = UpdateCheckThread(VERSION, self.root / "assets", latest_url=LATEST_URL)
+        thread.checked.connect(self._on_update_checked)
+        self._update_thread = thread
+        thread.start()
+
+    def _on_update_checked(self, info) -> None:
+        if not isinstance(info, dict):
+            return
+        if info.get("asset_changes"):
+            self._apply_asset_changes(info)
+        if info.get("package"):
+            self._update_info = info
+            self._prompt_update(info)
+
+    def _apply_asset_changes(self, info: dict) -> None:
+        """素材热更：先释放影片缓存（否则 GIF 被 QMovie 占着覆盖会失败），再原地换索引。"""
+        self.sprite.release_movies()
+        done = apply_asset_update(
+            info["asset_changes"], info["assets_base"], self.root / "assets", fetch_bytes
+        )
+        if not done:
+            return
+        fresh = load_categories(self.root / "assets" / "categories.json")
+        self.catalog.clear()
+        self.catalog.update(fresh)
+        self.sprite.reload()
+        self._show_toast(_ASSET_TOAST)
+
+    def _prompt_update(self, info: dict) -> None:
+        self._update_prompt.show_version(
+            info.get("version", ""), info.get("notes", ""), anchor=self._pet_anchor()
+        )
+
+    def _dismiss_update_prompt(self) -> None:
+        """点「稍后」只关窗；`_update_info` 保留，托盘菜单入口还在。"""
+        self._update_prompt.hide()
+
+    def _update_now(self) -> None:
+        info = self._update_info
+        if not info or not info.get("package"):
+            return
+        self._update_prompt.show_version(
+            info.get("version", ""), info.get("notes", ""), anchor=self._pet_anchor()
+        )
+        self._update_prompt.set_busy(True)
+        thread = ProgramUpdateThread(info, self.root, Path(tempfile.gettempdir()) / "momolulu-update")
+        thread.staged.connect(self._on_program_staged)
+        self._program_thread = thread
+        thread.start()
+
+    def _on_program_staged(self, bat) -> None:
+        if bat is None:
+            self._update_prompt.set_busy(False, "更新失败，已保留当前版本")
+            return
+        try:
+            subprocess.Popen(
+                ["cmd", "/c", str(bat)],
+                creationflags=subprocess.DETACHED_PROCESS
+                | subprocess.CREATE_NEW_PROCESS_GROUP,
+                close_fds=True,
+            )
+        except OSError:
+            self._update_prompt.set_busy(False, "更新失败，已保留当前版本")
+            return
+        self._quit()
+
     # ------------------------------------------------------------ 启动与位置
 
     def _screens(self) -> list[tuple[int, int, int, int]]:
@@ -464,6 +560,7 @@ class PetApp:
         self.behavior.stop()
         self._save_timer.stop()
         self.toast.hide()
+        self._update_prompt.hide()
         for signal, slot in (
             (self.sprite.drag_moved, self._on_drag_moved),
             (self.sprite.drag_finished, self._on_drag_finished),
@@ -489,6 +586,15 @@ class PetApp:
 
 
 def main() -> int:
+    try:
+        logging.basicConfig(
+            filename=app_root() / "momolulu.log",
+            level=logging.WARNING,
+            encoding="utf-8",
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    except Exception:  # noqa: BLE001 - 日志不可写绝不能影响噜噜运行
+        pass
     return PetApp().run()
 
 
