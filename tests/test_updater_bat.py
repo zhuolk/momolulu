@@ -63,13 +63,16 @@ def test_write_updater_bat_roundtrips_chinese_via_mbcs(tmp_path):
     text = _text(install_dir=Path(r"C:\Users\张三\Desktop\momolulu 桌宠"))
     path = write_updater_bat(tmp_path / "updater.bat", text)
 
-    restored = path.read_text(encoding="mbcs")
-    assert "张三" in restored
-    # write_text 会追加 \n -> os.linesep 翻译，故忽略换行、逐字符比对内容
-    assert "".join(restored.splitlines()) == "".join(text.splitlines())
+    # 必须读字节再解码：read_text 默认 newline=None，读侧也会把 \r\n 翻译成 \n，
+    # 那样就分不清「写侧漏了 CR」和「读侧吃了 CR」。
+    raw = path.read_bytes()
+    assert raw.decode("mbcs") == text                # mbcs 无损往返，换行也不被二次翻译
+
+    assert b"\r\r\n" not in raw                      # 不得写出 \r\r\n
+    assert b"\n" not in raw.replace(b"\r\n", b"")    # 不得有裸 \n（cmd 需要 CRLF）
 
     with pytest.raises(UnicodeDecodeError):
-        path.read_text(encoding="utf-8")  # mbcs 字节恰不是合法 utf-8，证明写的不是 utf-8
+        raw.decode("utf-8")                          # mbcs 字节恰不是合法 utf-8，证明写的不是 utf-8
 
 
 _VAR_RE = re.compile(r"%(?:TARGET|NEW|OLD|EXE)%")

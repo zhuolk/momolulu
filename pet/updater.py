@@ -240,5 +240,7 @@ def write_updater_bat(path: Path, text: str) -> Path:
     """用 Windows ANSI 码页写盘，含中文的安装路径才能被 cmd 正确解析。"""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="mbcs")
+    # newline="" 禁止换行翻译：build_updater_bat 已显式产出 CRLF，
+    # 默认的 newline=None 会把其中的 \n 再翻译一次，写出 \r\r\n。
+    path.write_text(text, encoding="mbcs", newline="")
     return path
