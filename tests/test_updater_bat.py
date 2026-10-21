@@ -1,4 +1,7 @@
+import re
 from pathlib import Path
+
+import pytest
 
 from pet.updater import build_updater_bat, write_updater_bat
 
@@ -40,3 +43,47 @@ def test_write_updater_bat_roundtrip(tmp_path):
     out = write_updater_bat(tmp_path / "updater.bat", _text())
     assert out.exists()
     assert out.read_bytes().startswith(b"@echo off")
+
+
+def test_retry_cleans_old_before_move():
+    text = _text()
+    retry_at = text.index(":retry")
+    clean_at = text.index('rmdir /s /q "%OLD%"')
+    move_at = text.index('move "%TARGET%" "%OLD%"')
+    assert retry_at < clean_at < move_at
+
+
+def test_bat_has_no_pid_based_liveness_check():
+    lower = _text().lower()
+    for keyword in ("tasklist", "wmic", "taskkill"):
+        assert keyword not in lower
+
+
+def test_write_updater_bat_roundtrips_chinese_via_mbcs(tmp_path):
+    text = _text(install_dir=Path(r"C:\Users\张三\Desktop\momolulu 桌宠"))
+    path = write_updater_bat(tmp_path / "updater.bat", text)
+
+    restored = path.read_text(encoding="mbcs")
+    assert "张三" in restored
+    # write_text 会追加 \n -> os.linesep 翻译，故忽略换行、逐字符比对内容
+    assert "".join(restored.splitlines()) == "".join(text.splitlines())
+
+    with pytest.raises(UnicodeDecodeError):
+        path.read_text(encoding="utf-8")  # mbcs 字节恰不是合法 utf-8，证明写的不是 utf-8
+
+
+_VAR_RE = re.compile(r"%(?:TARGET|NEW|OLD|EXE)%")
+
+
+def test_every_path_expansion_is_quoted():
+    text = _text(install_dir=Path(r"C:\Users\张三\Desktop\momolulu 桌宠"))
+    checked = 0
+    for line in text.splitlines():
+        if line.lstrip().lower().startswith("rem"):
+            continue
+        quoted = [m.group(1) for m in re.finditer(r'"([^"]*)"', line)]
+        for match in _VAR_RE.finditer(line):
+            var = match.group(0)
+            assert any(var in seg for seg in quoted), f"路径变量未被引号包裹：{line!r}"
+            checked += 1
+    assert checked > 0
