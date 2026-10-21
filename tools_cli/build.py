@@ -29,6 +29,9 @@ APP_NAME = "momolulu"
 ENTRY = "main.py"
 REPO = "zhuolk/momolulu"
 
+# 开发期文件：`prepare.py` / `contact_sheet.py` 的产物，运行期一个都不读，不外发。
+_DEV_ONLY = (".index.json", "id_map.csv", "prepare_report.json", "contact_sheet_*.png")
+
 
 def build_args(project_root: Path, out_dir: Path, name: str = APP_NAME) -> list[str]:
     """拼出 PyInstaller 命令行参数；不传任何 `--add-data`（素材外置）。"""
@@ -56,7 +59,8 @@ def build_args(project_root: Path, out_dir: Path, name: str = APP_NAME) -> list[
 def stage_assets(project_root: Path, dist_dir: Path, name: str = APP_NAME) -> None:
     """把 `assets/` 与默认 `config.json` 复制到产物目录（已存在的配置不覆盖）。
 
-    `assets/raw/` 是素材采集原件、运行期不需要，跳过以免产物白白翻倍。
+    只带运行期需要的文件：`assets/raw/` 是素材采集原件，`_DEV_ONLY` 是准备/校对
+    脚本的产物，两者运行期都不读，跳过以免产物白白变大。
     """
     app_dir = Path(dist_dir) / name
     source = Path(project_root) / "assets"
@@ -65,7 +69,7 @@ def stage_assets(project_root: Path, dist_dir: Path, name: str = APP_NAME) -> No
             source,
             app_dir / "assets",
             dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns("raw"),
+            ignore=shutil.ignore_patterns("raw", *_DEV_ONLY),
         )
     config_path = app_dir / "config.json"
     if not config_path.exists():

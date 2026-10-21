@@ -2,7 +2,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from tools_cli.build import asset_manifest, build_zip, write_latest_json
+from tools_cli.build import asset_manifest, build_zip, stage_assets, write_latest_json
 
 
 def _fake_app(tmp_path: Path) -> Path:
@@ -22,6 +22,24 @@ def test_build_zip_excludes_config_json(tmp_path):
     assert "momolulu/momolulu.exe" in names
     assert "momolulu/_internal/python310.dll" in names
     assert "momolulu/config.json" not in names
+
+
+def test_stage_assets_skips_raw_and_dev_only_files(tmp_path):
+    root = tmp_path / "proj"
+    assets = root / "assets"
+    (assets / "processed").mkdir(parents=True)
+    (assets / "processed" / "lulu_001.gif").write_bytes(b"gif")
+    (assets / "categories.json").write_text("{}", encoding="utf-8")
+    (assets / "raw").mkdir()
+    (assets / "raw" / "origin.gif").write_bytes(b"raw-origin")
+    for name in (".index.json", "id_map.csv", "prepare_report.json", "contact_sheet_01.png"):
+        (assets / name).write_bytes(b"dev")
+
+    stage_assets(root, tmp_path / "dist")
+
+    staged = tmp_path / "dist" / "momolulu" / "assets"
+    got = sorted(p.relative_to(staged).as_posix() for p in staged.rglob("*") if p.is_file())
+    assert got == ["categories.json", "processed/lulu_001.gif"]
 
 
 def test_asset_manifest_keys_are_relative_to_assets(tmp_path):
