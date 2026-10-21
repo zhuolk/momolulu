@@ -308,6 +308,8 @@ class Sprite(QWidget):
         """
         for movie in self._movies.values():
             movie.stop()
+            # 清空文件名让 Qt 显式关闭底层文件句柄，不依赖 Python 引用计数的即时析构
+            movie.setFileName("")
         self._movies.clear()
         self._current_movie = None
 

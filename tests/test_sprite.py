@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from PIL import Image
@@ -191,3 +192,23 @@ def test_release_movies_then_reload_plays_again(qapp, tmp_path):
     s.release_movies()
     s.reload()
     assert s.movie_cache_size() == 1
+
+
+def test_release_movies_releases_file_handle(qapp, tmp_path):
+    """句柄真实释放的守卫：`release_movies()` 后同一路径必须可被 `os.replace` 覆盖。
+
+    若实现回退为 `deleteLater()`，析构被推迟到下一次事件循环，文件句柄仍被占用，
+    这里的 `os.replace` 会抛 `PermissionError`，本用例即失败。
+    """
+    gif_path = tmp_path / "lulu_001.gif"
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    assert s.play("idle") is True
+    assert s.movie_cache_size() == 1
+
+    s.release_movies()
+
+    replacement = tmp_path / "replacement.gif"
+    make_gif(replacement, size=(64, 64))
+    expected = replacement.read_bytes()
+    os.replace(replacement, gif_path)          # 不抛异常即句柄已释放
+    assert gif_path.read_bytes() == expected   # 内容确已换成新文件
