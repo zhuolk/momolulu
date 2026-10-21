@@ -12,6 +12,9 @@ build/
 # 运行期生成
 config.json
 
+# SDD 执行账本（开发期，不入库）
+.superpowers/
+
 # 素材采集原件与开发期账本（体积大 / 依赖 raw，不入库）
 assets/raw/
 assets/.index.json
