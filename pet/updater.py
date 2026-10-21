@@ -307,6 +307,8 @@ def prepare_program_update(
         raise UpdateError("暂存目录不能位于安装目录内，否则更新脚本会把自己搬走")
     staged_root = temp_root / "momolulu.new"
     version = info.get("version") or "unknown"
+    if not isinstance(version, str):
+        raise UpdateError("latest.json 的 version 非法")
     work_dir = temp_root / version
 
     def _clear() -> None:
@@ -323,7 +325,7 @@ def prepare_program_update(
     except UpdateError:
         _clear()
         raise
-    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+    except (OSError, ValueError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         # UnicodeEncodeError 继承自 ValueError，会被这里兜住（bat 的 mbcs 写盘失败）。
         _clear()
         raise UpdateError(f"准备更新失败：{exc}") from exc

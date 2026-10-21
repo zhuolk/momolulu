@@ -15,6 +15,23 @@ def _make_zip(path: Path, entries: dict[str, bytes], root: str = "momolulu") -> 
     return path
 
 
+def _make_encrypted_zip(path: Path, entries: dict[str, bytes], root: str = "momolulu") -> Path:
+    """标准库写不出加密 zip：先正常写，再把「加密」标志位(bit0)打到本地头与中央目录上，
+    无密码走 zipfile.open 时会抛 RuntimeError（zipfile.py:1564）。"""
+    _make_zip(path, entries, root)
+    data = bytearray(path.read_bytes())
+    for sig, off in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        i = 0
+        while True:
+            i = data.find(sig, i)
+            if i < 0:
+                break
+            data[i + off] |= 1
+            i += 4
+    path.write_bytes(bytes(data))
+    return path
+
+
 def _info(zip_path: Path, *, sha256: str | None = None, size: int | None = None) -> dict:
     raw = zip_path.read_bytes()
     return {
@@ -203,6 +220,44 @@ def test_prepare_program_update_rejects_package_with_null_url(tmp_path):
         prepare_program_update(info, install, tmp_path / "temp", download=download)
 
     assert (install / "momolulu.exe").read_bytes() == b"old"          # 安装目录未被触碰
+    assert not (tmp_path / "temp" / "momolulu.new").exists()
+    assert not (tmp_path / "temp" / "updater.bat").exists()
+
+
+def test_prepare_program_update_wraps_encrypted_zip(tmp_path):
+    # 加密 zip 的 extractall 抛 RuntimeError，与 BadZipFile 同属「内容不可用」，必须包成 UpdateError。
+    zip_path = _make_encrypted_zip(tmp_path / "enc.zip", {"momolulu.exe": b"exe"})
+    install = tmp_path / "app" / "momolulu"
+    install.mkdir(parents=True)
+
+    def download(url: str, dest: Path, timeout: float = 5.0) -> Path:
+        dest.write_bytes(zip_path.read_bytes())
+        return dest
+
+    with pytest.raises(UpdateError):
+        prepare_program_update(_info(zip_path), install, tmp_path / "temp", download=download)
+
+    assert not (tmp_path / "temp" / "momolulu.new").exists()
+    assert not (tmp_path / "temp" / "updater.bat").exists()
+
+
+def test_prepare_program_update_rejects_non_string_version(tmp_path):
+    # version 为真值但非 str（如 123）时，必须在 work_dir = temp_root / version 之前拦下，
+    # 否则抛 TypeError 且连失败清理都执行不到。
+    zip_path = _make_zip(tmp_path / "src.zip", {"momolulu.exe": b"exe"})
+    install = tmp_path / "app" / "momolulu"
+    install.mkdir(parents=True)
+
+    def download(url: str, dest: Path, timeout: float = 5.0) -> Path:
+        dest.write_bytes(zip_path.read_bytes())
+        return dest
+
+    info = _info(zip_path)
+    info["version"] = 123
+    with pytest.raises(UpdateError):
+        prepare_program_update(info, install, tmp_path / "temp", download=download)
+
+    assert not (tmp_path / "temp").exists()                          # 未产生任何残留
     assert not (tmp_path / "temp" / "momolulu.new").exists()
     assert not (tmp_path / "temp" / "updater.bat").exists()
 
