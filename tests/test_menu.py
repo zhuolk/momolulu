@@ -19,6 +19,7 @@ class Handlers:
         self.open_settings = lambda: self.calls.append(("settings",))
         self.toggle_autostart = lambda: self.calls.append(("autostart",))
         self.quit = lambda: self.calls.append(("quit",))
+        self.update_now = lambda: self.calls.append(("update_now",))
 
 
 MODS = {"pomodoro": False, "water": True, "sit": True, "meal": True, "hourly": False}
@@ -133,3 +134,32 @@ def test_tray_pops_menu_on_context_activation_only(qapp):
 def test_tray_popup_menu_returns_false_without_factory_result(qapp):
     tray = Tray(qapp, QIcon(), lambda: None)
     assert tray.popup_menu() is False and tray.menu is None
+
+
+def test_update_item_absent_without_new_version(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    assert not [t for t in actions(m) if t.startswith("立即更新到")]
+
+
+def test_update_item_present_and_triggers_handler(qapp):
+    h = Handlers()
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, update_version="0.2.0"), h.__dict__
+    )
+    t = actions(m)
+    assert "立即更新到 0.2.0" in t
+    t["立即更新到 0.2.0"].trigger()
+    assert ("update_now",) in h.calls
+
+
+def test_update_item_sits_before_settings(qapp):
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, update_version="0.2.0"), Handlers().__dict__
+    )
+    order = [a.text().replace("&", "") for a in m.actions()]
+    assert order.index("立即更新到 0.2.0") < order.index("设置…")
+
+
+def test_existing_five_arg_calls_still_work(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    assert "设置…" in actions(m)

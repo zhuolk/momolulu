@@ -32,12 +32,14 @@ class MenuState:
         autostart: bool,
         modules: dict,
         pomodoro_running: bool,
+        update_version: str | None = None,
     ):
         self.visible = bool(visible)
         self.passthrough = bool(passthrough)
         self.autostart = bool(autostart)
         self.modules = dict(modules)
         self.pomodoro_running = bool(pomodoro_running)
+        self.update_version = update_version or None
 
 
 # ------------------------------------------------------------------ 回调适配
@@ -112,6 +114,11 @@ def build_menu(parent, state: MenuState, handlers) -> QMenu:
         tools.addAction(label).triggered.connect(_slot(handlers, "pomodoro", action_id))
 
     menu.addSeparator()
+
+    if state.update_version:
+        update = menu.addAction(f"立即更新到 {state.update_version}")
+        update.triggered.connect(_slot(handlers, "update_now"))
+        menu.addSeparator()
 
     settings = menu.addAction("设置…")
     settings.triggered.connect(_slot(handlers, "open_settings"))
