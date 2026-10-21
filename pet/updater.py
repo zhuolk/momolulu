@@ -7,7 +7,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from pathlib import Path
+
+from pet.download import UpdateError, md5_bytes, md5_file
 
 LATEST_URL = "https://raw.githubusercontent.com/zhuolk/momolulu/main/update/latest.json"
 
@@ -91,3 +95,63 @@ def parse_latest(raw: bytes | str) -> dict | None:
         "package": package,
         "assets": assets,
     }
+
+
+def safe_relpath(rel: str) -> Path | None:
+    """把 `assets/` 下的相对路径收敛成安全的 Path；越界一律 None。"""
+    if not isinstance(rel, str) or not rel:
+        return None
+    text = rel.replace("\\", "/")
+    if text.startswith("/") or ":" in text.split("/")[0]:
+        return None
+    parts = [part for part in text.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        return None
+    return Path(*parts)
+
+
+def _local_md5(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        return md5_file(path)
+    except OSError:
+        return None
+
+
+def asset_diff(remote_files: dict[str, str], local_dir: Path) -> dict[str, str]:
+    """远端 md5 清单与本地实际文件的差异（只含新增与变更）。"""
+    local_dir = Path(local_dir)
+    changes: dict[str, str] = {}
+    for rel, digest in remote_files.items():
+        target = safe_relpath(rel)
+        if target is None:
+            continue
+        if _local_md5(local_dir / target) != digest:
+            changes[rel] = digest
+    return changes
+
+
+def apply_asset_update(changes: dict[str, str], base: str, local_dir: Path, fetch) -> list[str]:
+    """把有差异的素材下下来逐个原子替换；单文件失败只跳过。"""
+    local_dir = Path(local_dir)
+    done: list[str] = []
+    for rel, digest in changes.items():
+        target = safe_relpath(rel)
+        if target is None:
+            continue
+        dest = local_dir / target
+        tmp = dest.with_name(dest.name + ".tmp")
+        try:
+            data = fetch(base + rel)
+            if md5_bytes(data) != digest:
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_bytes(data)
+            os.replace(tmp, dest)
+        except Exception:  # noqa: BLE001 - 单个素材失败只跳过，绝不能拖垮整个更新
+            continue
+        finally:
+            tmp.unlink(missing_ok=True)
+        done.append(rel)
+    return done
