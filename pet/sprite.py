@@ -296,14 +296,25 @@ class Sprite(QWidget):
     def set_track(self, track: str | None) -> None:
         self._track = track or "transparent"
 
+    def release_movies(self) -> None:
+        """停掉并销毁全部影片缓存。
+
+        素材热更前必须调用：`QMovie` 打开着 GIF 文件，Windows 上覆盖被占用的文件会
+        `PermissionError`，不先释放的话正在播放的素材永远更新不上。
+
+        这里靠丢弃引用立即析构（`QMovie` 无 parent，PyQt 持有其所有权）：换成
+        `deleteLater()` 只把析构推迟到下一次事件循环，热更在同一段代码里
+        `os.replace()` 时句柄仍被占着，覆盖照样 `PermissionError`。
+        """
+        for movie in self._movies.values():
+            movie.stop()
+        self._movies.clear()
+        self._current_movie = None
+
     def reload(self) -> None:
         """清空影片缓存并按当前分类重新加载（缩放等渲染参数变化后调用）。"""
         category = self._current_category
-        for movie in self._movies.values():
-            movie.stop()
-            movie.deleteLater()
-        self._movies.clear()
-        self._current_movie = None
+        self.release_movies()
         if category is not None:
             self.play(category, once=False)
 

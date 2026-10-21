@@ -170,3 +170,24 @@ def test_five_quick_clicks_emit_fast_click(qapp, tmp_path):
     for _ in range(5):
         press(s, (10, 10)); release(s, (10, 10))
     assert got == ["fast"]
+
+
+def test_release_movies_clears_cache_without_replay(qapp, tmp_path):
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    assert s.play("idle") is True
+    assert s.movie_cache_size() == 1
+
+    replayed = []
+    s.asset_missing.connect(lambda: replayed.append("missing"))
+    s.release_movies()
+
+    assert s.movie_cache_size() == 0
+    assert replayed == []                    # 没有重播：不触发 asset_missing、也没有新缓存
+
+
+def test_release_movies_then_reload_plays_again(qapp, tmp_path):
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    s.play("idle")
+    s.release_movies()
+    s.reload()
+    assert s.movie_cache_size() == 1
