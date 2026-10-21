@@ -1,9 +1,10 @@
 import json
+import threading
 from pathlib import Path
 
 from pet.download import md5_bytes, UpdateError
 from pet.updater import check_for_update
-from pet.update_runner import UpdateCheckThread
+from pet.update_runner import AssetUpdateThread, UpdateCheckThread
 
 URL = "https://raw.githubusercontent.com/zhuolk/momolulu/main/update/latest.json"
 BASE = "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/"
@@ -113,3 +114,91 @@ def test_update_check_thread_passes_latest_url_through(qapp, tmp_path):
 
     assert seen == [other_url]
     assert len(got) == 1 and got[0]["version"] == "0.2.0"
+
+
+def test_asset_update_thread_writes_files_and_emits_paths(qapp, tmp_path):
+    changes = {"processed/lulu_002.gif": md5_bytes(b"new")}
+    thread = AssetUpdateThread(changes, BASE, tmp_path, fetch=lambda url: b"new")
+    got = []
+    thread.done.connect(got.append)
+
+    thread.start()
+    assert thread.wait(5000) is True
+    for _ in range(50):
+        if got:
+            break
+        qapp.processEvents()
+
+    assert got == [["processed/lulu_002.gif"]]
+    assert (tmp_path / "processed" / "lulu_002.gif").read_bytes() == b"new"
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_asset_update_thread_emits_empty_on_fetch_failure(qapp, tmp_path):
+    changes = {"processed/lulu_002.gif": md5_bytes(b"new")}
+
+    def boom_update_error(url):
+        raise UpdateError("断网")
+
+    def boom_runtime(url):
+        raise RuntimeError("意外")
+
+    for fetch in (boom_update_error, boom_runtime):
+        thread = AssetUpdateThread(changes, BASE, tmp_path, fetch=fetch)
+        got = []
+        thread.done.connect(got.append)
+
+        thread.start()
+        assert thread.wait(5000) is True
+        for _ in range(50):
+            if got:
+                break
+            qapp.processEvents()
+
+        assert got == [[]]
+        assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_asset_update_thread_runs_off_main_thread(qapp, tmp_path):
+    # I-1 的正牌守卫：下载必须真的跑在非主线程，否则界面会被网络卡顿冻住。
+    main_ident = threading.get_ident()
+    changes = {"processed/lulu_002.gif": md5_bytes(b"new")}
+    seen = []
+
+    def fetch(url):
+        seen.append(threading.get_ident())
+        return b"new"
+
+    thread = AssetUpdateThread(changes, BASE, tmp_path, fetch=fetch)
+    got = []
+    thread.done.connect(got.append)
+
+    thread.start()
+    assert thread.wait(5000) is True
+    for _ in range(50):
+        if got:
+            break
+        qapp.processEvents()
+
+    assert seen and all(ident != main_ident for ident in seen)
+
+
+def test_asset_update_thread_is_silent_when_diff_raises(qapp, tmp_path, monkeypatch):
+    # 线程用 `except Exception` 兜底：非 UpdateError 的意外异常也必须静默降级、不发崩溃。
+    # 收窄成 `except UpdateError` 时本用例会立刻变红。
+    def boom(*args, **kwargs):
+        raise RuntimeError("意外异常，且不是 UpdateError")
+
+    monkeypatch.setattr("pet.update_runner.apply_asset_update", boom)
+    thread = AssetUpdateThread({"processed/x.gif": "0" * 32}, BASE, tmp_path)
+    got = []
+    thread.done.connect(got.append)
+
+    thread.start()
+    assert thread.wait(5000) is True
+    for _ in range(50):
+        if got:
+            break
+        qapp.processEvents()
+
+    assert got == [[]]

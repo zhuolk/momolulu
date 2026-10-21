@@ -23,12 +23,11 @@ from pet.autostart import default_command, set_enabled, sync
 from pet.behavior import PRIORITY_MODULE, Behavior
 from pet.catalog import load_categories, pick
 from pet.config import load_config, save_config
-from pet.download import fetch_bytes
 from pet.edge_hide import EdgeHider
 from pet.sprite import Sprite
 from pet.tray import Tray, ensure_tray_icon
-from pet.update_runner import ProgramUpdateThread, UpdateCheckThread
-from pet.updater import LATEST_URL, apply_asset_update
+from pet.update_runner import AssetUpdateThread, ProgramUpdateThread, UpdateCheckThread
+from pet.updater import LATEST_URL
 from pet.version import VERSION
 from pet.winutil import is_foreground_fullscreen, should_hide_pet
 from ui.menu import MENU_LABELS, MenuState, build_menu
@@ -159,6 +158,7 @@ class PetApp:
         self._update_info: dict | None = None
         self._update_thread = None
         self._program_thread = None
+        self._asset_thread = None
         self._update_prompt = UpdatePrompt()
         self._update_prompt.accepted.connect(self._update_now)
         self._update_prompt.declined.connect(self._dismiss_update_prompt)
@@ -444,11 +444,17 @@ class PetApp:
             self._prompt_update(info)
 
     def _apply_asset_changes(self, info: dict) -> None:
-        """素材热更：先释放影片缓存（否则 GIF 被 QMovie 占着覆盖会失败），再原地换索引。"""
+        """素材热更：先释放影片缓存（否则 GIF 被 QMovie 占着覆盖会失败），下载交给后台线程。"""
         self.sprite.release_movies()
-        done = apply_asset_update(
-            info["asset_changes"], info["assets_base"], self.root / "assets", fetch_bytes
+        thread = AssetUpdateThread(
+            info["asset_changes"], info["assets_base"], self.root / "assets"
         )
+        thread.done.connect(self._on_assets_updated)
+        self._asset_thread = thread
+        thread.start()
+
+    def _on_assets_updated(self, done) -> None:
+        """素材下载完成（主线程）：原地换索引并提示一句。"""
         if not done:
             return
         fresh = load_categories(self.root / "assets" / "categories.json")

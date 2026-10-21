@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from pet.download import fetch_bytes
-from pet.updater import LATEST_URL, check_for_update, prepare_program_update
+from pet.updater import LATEST_URL, apply_asset_update, check_for_update, prepare_program_update
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,23 @@ class UpdateCheckThread(QThread):
         except Exception as exc:  # noqa: BLE001 - 更新检查绝不允许拖垮主程序
             logger.warning("检查更新线程失败：%s", exc)
             self.checked.emit(None)
+
+
+class AssetUpdateThread(QThread):
+    """素材热更：把逐文件下载搬到后台线程；成功发写入的相对路径列表，失败发空列表。"""
+
+    done = pyqtSignal(object)
+
+    def __init__(self, changes: dict, base: str, local_dir: Path, fetch=fetch_bytes, parent=None):
+        super().__init__(parent)
+        self._args = (changes, base, Path(local_dir), fetch)
+
+    def run(self) -> None:  # noqa: D102 - QThread
+        try:
+            self.done.emit(apply_asset_update(*self._args))
+        except Exception as exc:  # noqa: BLE001 - 素材热更绝不允许拖垮主程序
+            logger.warning("素材热更线程失败：%s", exc)
+            self.done.emit([])
 
 
 class ProgramUpdateThread(QThread):
