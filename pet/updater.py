@@ -14,8 +14,14 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from pet.download import md5_bytes, md5_file
-from pet.download import UpdateError, download_file, sha256_file
+from pet.download import (
+    UpdateError,
+    download_file,
+    fetch_bytes,
+    md5_bytes,
+    md5_file,
+    sha256_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -329,3 +335,30 @@ def prepare_program_update(
         # UnicodeEncodeError 继承自 ValueError，会被这里兜住（bat 的 mbcs 写盘失败）。
         _clear()
         raise UpdateError(f"准备更新失败：{exc}") from exc
+
+
+def check_for_update(
+    local_version: str,
+    local_assets_dir: Path,
+    latest_url: str = LATEST_URL,
+    fetch=fetch_bytes,
+) -> dict | None:
+    """取 latest.json、比对素材与版本，产出一份可执行的更新计划；任何问题都返回 None。"""
+    try:
+        parsed = parse_latest(fetch(latest_url))
+    except Exception as exc:  # noqa: BLE001 - 检查更新绝不允许影响噜噜运行
+        logger.warning("检查更新失败：%s", exc)
+        return None
+    if parsed is None:
+        return None
+    changes = asset_diff(parsed["assets"]["files"], Path(local_assets_dir))
+    package = parsed["package"] if update_available(local_version, parsed["version"]) else None
+    if package is None and not changes:
+        return None
+    return {
+        "version": parsed["version"],
+        "notes": parsed["notes"],
+        "package": package,
+        "assets_base": parsed["assets"]["base"],
+        "asset_changes": changes,
+    }
