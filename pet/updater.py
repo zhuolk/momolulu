@@ -255,13 +255,20 @@ def _download_zip(info: dict, temp_root: Path, download) -> Path:
     work = Path(temp_root) / version
     work.mkdir(parents=True, exist_ok=True)
     zip_path = work / f"momolulu-{version}.zip"
+    url, sha256, size = package.get("url"), package.get("sha256"), package.get("size")
+    if not isinstance(url, str) or not url:
+        raise UpdateError("package.url 非法")
+    if not isinstance(sha256, str) or not sha256:
+        raise UpdateError("package.sha256 非法")
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+        raise UpdateError("package.size 非法")
     engine = download if download is not None else download_file
-    engine(package["url"], zip_path)
+    engine(url, zip_path)
     if not zip_path.is_file():
         raise UpdateError("下载未产生文件")
-    if zip_path.stat().st_size != package["size"]:
+    if zip_path.stat().st_size != size:
         raise UpdateError("整包大小与 latest.json 不符")
-    if sha256_file(zip_path) != package["sha256"]:
+    if sha256_file(zip_path) != sha256:
         raise UpdateError("整包 sha256 校验失败")
     return zip_path
 

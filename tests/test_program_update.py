@@ -168,3 +168,41 @@ def test_prepare_program_update_removes_version_work_dir_on_failure(tmp_path):
         )
     assert not (tmp_path / "temp" / "0.2.0").exists()
 
+
+def test_prepare_program_update_rejects_empty_package(tmp_path):
+    # package 缺字段时必须按公开契约抛 UpdateError，不能漏出 KeyError。
+    install = tmp_path / "app" / "momolulu"
+    install.mkdir(parents=True)
+    (install / "momolulu.exe").write_bytes(b"old")
+
+    def download(url: str, dest: Path, timeout: float = 5.0) -> Path:
+        dest.write_bytes(b"payload")
+        return dest
+
+    info = {"version": "0.2.0", "notes": "", "package": {}, "assets": {}}
+    with pytest.raises(UpdateError):
+        prepare_program_update(info, install, tmp_path / "temp", download=download)
+
+    assert (install / "momolulu.exe").read_bytes() == b"old"          # 安装目录未被触碰
+    assert not (tmp_path / "temp" / "momolulu.new").exists()
+    assert not (tmp_path / "temp" / "updater.bat").exists()
+
+
+def test_prepare_program_update_rejects_package_with_null_url(tmp_path):
+    # package.url 为 None（其余键缺失）同样必须抛 UpdateError。
+    install = tmp_path / "app" / "momolulu"
+    install.mkdir(parents=True)
+    (install / "momolulu.exe").write_bytes(b"old")
+
+    def download(url: str, dest: Path, timeout: float = 5.0) -> Path:
+        dest.write_bytes(b"payload")
+        return dest
+
+    info = {"version": "0.2.0", "notes": "", "package": {"url": None}, "assets": {}}
+    with pytest.raises(UpdateError):
+        prepare_program_update(info, install, tmp_path / "temp", download=download)
+
+    assert (install / "momolulu.exe").read_bytes() == b"old"          # 安装目录未被触碰
+    assert not (tmp_path / "temp" / "momolulu.new").exists()
+    assert not (tmp_path / "temp" / "updater.bat").exists()
+
