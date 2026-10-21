@@ -4,7 +4,8 @@
     "idle": {
       "files": [
         "lulu_004.gif",
-        "lulu_008.gif"
+        "lulu_008.gif",
+        "lulu_010.gif"
       ],
       "track": "auto"
     },
@@ -34,7 +35,8 @@
     },
     "happy": {
       "files": [
-        "lulu_009.gif"
+        "lulu_009.gif",
+        "lulu_011.gif"
       ],
       "track": "transparent"
     },
@@ -70,6 +72,8 @@
     "lulu_006.gif": "card",
     "lulu_007.gif": "card",
     "lulu_008.gif": "card",
-    "lulu_009.gif": "transparent"
+    "lulu_009.gif": "transparent",
+    "lulu_010.gif": "transparent",
+    "lulu_011.gif": "transparent"
   }
 }

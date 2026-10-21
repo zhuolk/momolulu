@@ -64,7 +64,9 @@ docs/                 本文件 + superpowers 下的 spec / plan
 - **鼠标穿透双模式**：交互模式可拖拽；穿透模式不拦截鼠标（`winutil` 里改窗口扩展样式）。
 - **托盘**：图标固定由 `lulu_002.gif` 首帧生成 64×64 PNG（`assets/tray_icon.png`，缺失时自动重建）；
   菜单必须用 `QMenu.popup()` 渲染，原生托盘菜单在此环境字体与项渲染异常。
-- **配置**：`config.json` 位于程序目录，运行期自动生成，不入库；结构见 `pet/config.py` 的 `DEFAULTS`。
+- **配置**：`config.json` 位于程序目录，运行期自动生成，不入库；结构见 `pet/config.py` 的 `DEFAULTS`
+  （默认显示缩放 `pet.scale = 0.5`；设置面板可调范围 0.5~2.0）。已存在的 `config.json` 不会被打包覆盖，
+  改默认值后要让旧机器生效，需删掉该文件或手动改设置项。
 - **素材外置**：`assets/` 与 exe 平级存放，换素材只需替换 `assets/`（改代码或素材后仍需重新打包）。
 
 ## 素材规范（改素材前必读）
@@ -76,7 +78,7 @@ docs/                 本文件 + superpowers 下的 spec / plan
   - `assets/id_map.csv`：id / raw / track 对照表
   - `assets/categories.json`：分类结构与每张图的实测轨道
 - 分类：`idle` `walk` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `unassigned`。
-  当前每类各 1~2 张，`unassigned` 为空。
+  当前共 11 张：`idle` 3 张、`happy` 2 张，其余各 1 张，`unassigned` 为空。
 - 标准流程：GIF 放入 `raw/` → `python tools_cli/prepare.py` → `python tools_cli/contact_sheet.py`
   → `python tools_cli/build.py`。
 - 坑：
@@ -111,7 +113,7 @@ python tools_cli/contact_sheet.py    # 生成预览接触表
    在设置面板里关一次再开一次自启，或手工删 `HKCU\...\Run\LuluPet`。
 4. aigei 采集候选约 254 张（约 630MB）仍在开发机的 `_stage_gifs/aigei/`，未入库、可清理。
 5. `assets/raw/`、`.index.json`、`id_map.csv`、`contact_sheet_*.png`、`tray_icon.png` 都在
-   `.gitignore` 里（体积 / 依赖 raw），clone 后只有 `processed` 的 9 张图与 `categories.json`；
+   `.gitignore` 里（体积 / 依赖 raw），clone 后只有 `processed` 的 11 张图与 `categories.json`；
    完整素材链路需要另外传输。
 
 ## 在另一台电脑继续

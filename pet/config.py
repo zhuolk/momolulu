@@ -14,7 +14,7 @@ from pathlib import Path
 DEFAULTS: dict = {
     "version": 1,
     "pet": {
-        "scale": 1.0,
+        "scale": 0.5,
         "pos": None,
         "edge_hide": None,
         "always_on_top": True,
