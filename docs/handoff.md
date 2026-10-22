@@ -5,14 +5,14 @@
 ## 这是什么
 
 噜噜桌宠（打包名 `momolulu`）：Windows 桌面水豚挂件。PyQt5 无边框置顶窗口循环播放 GIF，
-带行为状态机、自主走动、贴边隐藏、鼠标穿透双模式、托盘菜单，番茄钟 / 喝水·久坐 / 吃饭 / 整点报时提醒，
-以及启动时自动检查的素材热更与主程序自动更新。
+带行为状态机、自主走动、绕屏散步、贴边隐藏、鼠标穿透双模式、托盘菜单，
+番茄钟 / 喝水·久坐 / 吃饭 / 整点报时提醒，以及启动时自动检查的素材热更与主程序自动更新。
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.1`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：256 个 pytest 用例全量通过
-- 打包：`dist/momolulu/`（PyInstaller onedir，约 138.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 56MB），已实机启动验证
+- 当前版本：`0.2.2`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：277 个 pytest 用例全量通过
+- 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
 ## 环境
@@ -39,8 +39,9 @@ pet/                  核心层
   config.py           配置默认值 + 深合并 + 类型校验 + 原子写入
   catalog.py          素材目录与分类读取；找不到目标分类时按 FALLBACK 链回退
   sprite.py           无边框窗口 + GIF 播放 + 拖拽/连点/穿透 + 贴边条渲染 + moved 信号
-  behavior.py         行为状态机（idle/walk/sleep/eat/... 与优先级）
+  behavior.py         行为状态机（idle/walk/stroll/sleep/eat/... 与优先级）
   wander.py           自主走动（WANDER 期间水平挪 4px/100ms，碰边缘折返 + 镜像转身）
+  stroll.py           绕屏散步（STROLL 期间沿屏幕边缘逆时针走一圈，四角各转 90°）
   edge_hide.py        贴边隐藏（缩进屏幕外，只露 24px 桔子窄条）
   tray.py             托盘图标（固定取 lulu_002.gif）+ Qt 托盘菜单
   autostart.py        开机自启（注册表 Run 项，项名 Momolulu）
@@ -57,11 +58,11 @@ modules/              功能模块层，统一 enable/tick/disable（见 base.py
 ui/                   托盘菜单、设置对话框、气泡提示 toast、更新弹窗
   update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
-  prepare.py          素材预处理：编号 / md5 去重 / 分类登记
-  gif_pipeline.py     GIF 处理流水线（缩放 / 抽帧 / 调色 / 去背判定轨道）
+  prepare.py          素材预处理：编号 / md5 去重 / 分类登记（不再去背，见「素材规范」）
+  gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                256 个用例（pytest，conftest 里提供 qapp fixture）
+tests/                277 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + superpowers 下的 spec / plan
@@ -74,8 +75,12 @@ docs/                 本文件 + superpowers 下的 spec / plan
 - **GIF 双轨渲染**：素材分 `transparent`（已去背，直接画在桌面上）与 `card`（带背景，
   走圆角卡片渲染）两轨。轨道实测记录在 `assets/categories.json` 的 `tracks` 字段，
   `Sprite.play()` 按**被选中素材的实测轨道**渲染（不要按分类固定轨道）。
+  **新素材一律要求预先去背**，管线不再去背，所以 `card` 轨现在只服务早期那 5 张历史素材，
+  渲染分支要留着。
 - **行为状态机** `pet/behavior.py`：`idle` 空闲一段时间后随机触发小动作，
   `_AUTO_ACTIONS = ("walk", "sad", "bath")` 等概率三选一。
+  状态常量 `IDLE` / `DRAGGED` / `WANDER` / `STROLL`，分类到状态的映射见 `_STATE_NAMES`
+  （默认取分类名大写，`walk → WANDER`、`stroll → STROLL` 是特例）。
 - **贴边隐藏** `pet/edge_hide.py`：拖到屏幕左右边缘松手即缩进屏幕外，只露 **24px** 桔子窄条
   （`DEFAULT_EDGE_PX = DEFAULT_STRIP_PX = 24`）；
   **只有把桔子拖离边缘并松手才恢复显示**，鼠标划过 / 悬停都不唤醒。状态持久化到 `config.json` 的 `pet.edge_hide`。
@@ -90,8 +95,15 @@ docs/                 本文件 + superpowers 下的 spec / plan
   `prepare_report.json` / `contact_sheet_*.png`），`assets/` 里只剩运行期必需文件。
 - **自主走动** `pet/wander.py`：`WANDER` 状态期间每 100ms 水平挪 4px（约 40px/s），碰屏幕左右缘
   折返并把噜噜镜像转身。它只负责位移，走路的 GIF 由 `Behavior` 按 `walk` 分类播。
+- **绕屏散步** `pet/stroll.py`：右键菜单「搞搞震 ▸ 散步」触发。`STROLL` 状态期间每 100ms
+  走 8px（约 80px/s）。起步先瞬移到当前屏右下角，再逆时针绕屏幕边缘一圈：
+  右边向上 → 顶边向左 → 左边向下 → 底边向右 → 回右下角。
+  四角各逆时针转 90°（`_LEGS` 里的旋转角为 270 / 180 / 90 / 0；`QTransform.rotate()` 顺时针为正，
+  故 270 即逆时针 90°）。素材是**正方形**，转 90° 不改窗口长宽，`setFixedSize` 因此不受影响。
+  和 `wander.py` 一样只管位移，走路 GIF 由 `Behavior` 按 `stroll` 分类播；窗口移动发 `Sprite.moved`。
+  素材朝右为基准 0°，所以走右边（向上）时是 270。
 - **气泡跟随**：`main` 里 `_follow_toast` 订阅 `Sprite.moved`（只在坐标真变时发），
-  拖拽 / 自主走动 / 贴边滑出等**所有**位移场景都会同步气泡。
+  拖拽 / 自主走动 / 散步 / 贴边滑出等**所有**位移场景都会同步气泡。
   不要在各个交互函数里分别补气泡位置——加一处新的位移逻辑时容易漏。
 - **`setWindowFlags()` 在 Windows 上会销毁重建窗口**（穿透模式切换会用到）：
   调用后必须显式 `show()` 一次，否则噜噜会从桌面消失。
@@ -99,26 +111,41 @@ docs/                 本文件 + superpowers 下的 spec / plan
 
 ## 素材规范（改素材前必读）
 
-- 原始采集件放 `assets/raw/`；工具处理后产出 `assets/processed/lulu_NNN.gif`，桌宠只引用 `processed`。
+- 原始件放 `assets/raw/`；工具处理后产出 `assets/processed/lulu_NNN.gif`，桌宠只引用 `processed`。
+- **素材必须提前去好背（自带 alpha）**。管线**不再做去背**，`process_gif()` 拿到没有 alpha 的素材
+  会直接抛 `ValueError`：该素材计入 `report["failed"]`、半成品被删掉、报告里点名，`prepare.py` 退出码 1。
+  这是刻意设计的硬门槛——漏去背要立刻暴露，不许静默出片。
+  去背实现（`sample_background` / `remove_background` / `analyze_frame` / `grade` 等）仍保留在
+  `tools_cli/gif_pipeline.py` 里且有单测，但**已无调用方**，需要时可手工调用。
+  旧版靠 `--tol` / `--edge-min` 控制去背质量，这两个参数现在只是留着，传了也不生效。
 - 命名必须 `lulu_xxx.gif`；采集与处理按 **md5 去重**，同图不得重复入库。
 - 账本文件：
   - `assets/.index.json`：md5 → {name, track}
-  - `assets/id_map.csv`：id / raw / track 对照表
+  - `assets/id_map.csv`：id / raw / track 对照表（目前 `prepare.py` 已不生成，仅历史遗留）
   - `assets/categories.json`：分类结构与每张图的实测轨道
-- 分类：`idle` `walk` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `unassigned`。
-  当前共 11 张：`idle` 3 张、`happy` 2 张，其余各 1 张，`unassigned` 为空。
-- 标准流程：GIF 放入 `raw/` → `python tools_cli/prepare.py` → `python tools_cli/contact_sheet.py`
+- 分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `unassigned`。
+  当前共 12 张：`idle` 3 张、`happy` 2 张，`walk` / `stroll` / `sleep` / `drink` / `angry` / `sad` / `bath`
+  各 1 张（`eat` 暂无素材），`unassigned` 为空。12 张里 7 张 `transparent`、5 张 `card`（历史素材）。
+- 默认参数：`TOL=32`、`EDGE_MIN=0.70`、`MAX_SIDE=200`、`MAX_FPS=10`、`COLORS=96`、`MAX_BYTES=300KB`。
+  高帧率 / 高分辨率素材要显式放宽，例如散步那张用的是
+  `--max-side 240 --fps 20 --max-kb 500`（240×240、34 帧、394KB），
+  用默认档会被抽帧到明显卡顿。
+- 标准流程：**去好背的** GIF 放入 `raw/` → `python tools_cli/prepare.py [放宽参数]`
+  → `python tools_cli/contact_sheet.py`（人工看图分类）→ 手工把文件名从 `unassigned` 挪到目标分类
   → `python tools_cli/build.py`。
 - 坑：
   - `prepare.py --rebuild` 会从 1 重新编号，会让既有分类错位，**不要随意使用**。
   - 手动删素材后必须同步清理 `categories.json` 与 `.index.json`，否则出现悬空引用。
   - `catalog.existing_files()` 会过滤磁盘上不存在的文件名，所以删图即刻生效。
+  - **`processed/` 里素材尺寸并不统一**（现有 155×155、200×200、240×240 三种）。窗口尺寸 =
+    素材尺寸 × `pet.scale`，所以换分类 / 散步时噜噜体型会跳变。管线里**没有**「统一画布」这一步，
+    要修得单独加。
 
 ## 常用命令
 
 ```powershell
 cd capybara_pet
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 256 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 277 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
@@ -132,6 +159,9 @@ python tools_cli/contact_sheet.py         # 生成预览接触表
 - **无状态气泡**：已移除"噜噜在 XXX"的悬停状态提示，相关配置项与设置面板勾选项一并删掉。
 - **自主走动**：`idle` 待久了会随机切到 `walk`，噜噜自己在桌面上慢慢走（约 40px/s），
   走到屏幕边缘折返；走动时气泡一路跟随。
+- **绕屏散步**：右键菜单「搞搞震 ▸ 散步」触发。噜噜先瞬移到当前屏右下角，再沿屏幕边缘
+  逆时针走一圈（约 80px/s），四个拐角各逆时针转 90° 保持脚贴边，走完落回待机；
+  中途拖拽即中止散步。
 - **提醒模块默认值**：`pomodoro` 关、`health_reminder` 开（喝水 45min / 久坐 60min）、
   `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关。
 
@@ -149,7 +179,7 @@ python tools_cli/contact_sheet.py         # 生成预览接触表
    - 主程序更新：`info["package"]` 存在时**弹窗**征求同意，才下载整包自替换。
 6. `.gitignore` 覆盖 `dist/`、`*.spec`、`config.json`、`momolulu.log`、`.superpowers/`、
    `assets/raw/`、`.index.json`、`id_map.csv`、`prepare_report.json`、`contact_sheet_*.png`、
-   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 11 张图与 `categories.json`；
+   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 12 张图与 `categories.json`；
    完整素材链路（`raw/` 采集件与账本）需要另外传输。
 
 ## 在另一台电脑继续
@@ -159,7 +189,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 256 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 277 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。
