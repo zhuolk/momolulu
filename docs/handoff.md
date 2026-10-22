@@ -5,12 +5,15 @@
 ## 这是什么
 
 噜噜桌宠（打包名 `momolulu`）：Windows 桌面水豚挂件。PyQt5 无边框置顶窗口循环播放 GIF，
-带行为状态机、贴边隐藏、鼠标穿透双模式、托盘菜单，以及番茄钟 / 喝水·久坐 / 吃饭 / 整点报时提醒。
+带行为状态机、自主走动、贴边隐藏、鼠标穿透双模式、托盘菜单，番茄钟 / 喝水·久坐 / 吃饭 / 整点报时提醒，
+以及启动时自动检查的素材热更与主程序自动更新。
 
-- 仓库（私有）：<https://github.com/zhuolk/momolulu>
-- 分支：`main`
-- 测试：155 个 pytest 用例全量通过
-- 打包：`dist/momolulu/`（PyInstaller onedir，约 138.6MB），已实机启动验证
+- 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
+- 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
+- 当前版本：`0.2.1`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：256 个 pytest 用例全量通过
+- 打包：`dist/momolulu/`（PyInstaller onedir，约 138.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 56MB），已实机启动验证
+- 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
 ## 环境
 
@@ -18,35 +21,49 @@
 - 开发额外需要：pytest、PyInstaller
 - 内网装包需显式走代理：
   `python -m pip install --proxy http://127.0.0.1:8888 --index-url https://pypi.org/simple <pkg>`
+- **本机装了实时杀软（腾讯电脑管家）**：它会在新写出的 exe / dll 上短暂持句柄，此时对这些文件做
+  改名 / 搬移 / 删除会偶发 `WinError 5 拒绝访问`（PyInstaller 打包日志里也会看到
+  `remove_all_resources failed ... error(5, 'EndUpdateResourceW')`，它自己重试几次就过）。
+  遇到这种报错**先重试**，不要当成逻辑 bug。
+- 本机 `python -m pytest -q` **不打印 `N passed` 汇总行**：判断全绿要看**退出码是否为 0**，
+  并用 `python -m pytest --collect-only -q -p no:cacheprovider` 逐文件求和交叉确认用例数。
+- 跑测试建议加 `-p no:cacheprovider`，避免在仓库里留下 `.pytest_cache`。
 
 ## 目录结构
 
 ```
-main.py               程序入口：PetApp 组装窗口 / 行为机 / 模块 / 托盘
+main.py               程序入口：PetApp 组装窗口 / 行为机 / 模块 / 托盘 / 自动更新接线
 requirements.txt      运行期依赖
 pytest.ini            测试配置（testpaths = tests）
 pet/                  核心层
   config.py           配置默认值 + 深合并 + 类型校验 + 原子写入
   catalog.py          素材目录与分类读取；找不到目标分类时按 FALLBACK 链回退
-  sprite.py           无边框窗口 + GIF 播放 + 拖拽/连点/穿透 + 贴边条渲染
+  sprite.py           无边框窗口 + GIF 播放 + 拖拽/连点/穿透 + 贴边条渲染 + moved 信号
   behavior.py         行为状态机（idle/walk/sleep/eat/... 与优先级）
-  edge_hide.py        贴边隐藏（缩进屏幕外，只露桔子窄条）
+  wander.py           自主走动（WANDER 期间水平挪 4px/100ms，碰边缘折返 + 镜像转身）
+  edge_hide.py        贴边隐藏（缩进屏幕外，只露 24px 桔子窄条）
   tray.py             托盘图标（固定取 lulu_002.gif）+ Qt 托盘菜单
   autostart.py        开机自启（注册表 Run 项，项名 Momolulu）
   winutil.py          Win32 窗口辅助（置顶 / 点击穿透 / 全屏检测）
+  version.py          VERSION 常量（发版的唯一版本来源）
+  updater.py          更新元数据解析 / 版本比较 / 素材差分 / 整包校验与暂存 / updater.bat
+  download.py         受限下载（白名单 host + 重定向上限 + 可选的进度回调）
+  update_runner.py    三个 QThread：检查更新 / 素材热更 / 程序整包更新
 modules/              功能模块层，统一 enable/tick/disable（见 base.py）
   pomodoro.py         番茄钟
   health_reminder.py  喝水与久坐提醒（两个独立子开关 + snooze）
   meal_reminder.py    吃饭提醒（时间点列表）
   hourly_chime.py     整点报时
-ui/                   托盘菜单、设置对话框、气泡提示 toast
+ui/                   托盘菜单、设置对话框、气泡提示 toast、更新弹窗
+  update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
   prepare.py          素材预处理：编号 / md5 去重 / 分类登记
   gif_pipeline.py     GIF 处理流水线（缩放 / 抽帧 / 调色 / 去背判定轨道）
   contact_sheet.py    生成预览接触表
-  build.py            PyInstaller 打包 + 素材外置
-tests/                155 个用例（pytest，Conftest 里提供 qapp fixture）
+  build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
+tests/                256 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe）
+update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + superpowers 下的 spec / plan
 ```
 
@@ -59,8 +76,9 @@ docs/                 本文件 + superpowers 下的 spec / plan
   `Sprite.play()` 按**被选中素材的实测轨道**渲染（不要按分类固定轨道）。
 - **行为状态机** `pet/behavior.py`：`idle` 空闲一段时间后随机触发小动作，
   `_AUTO_ACTIONS = ("walk", "sad", "bath")` 等概率三选一。
-- **贴边隐藏** `pet/edge_hide.py`：拖到屏幕左右边缘松手即缩进屏幕外，只露 48px 桔子窄条；
-  **只有把桔子拖离边缘并松手才恢复显示**，鼠标划过不恢复。状态持久化到 `config.json` 的 `pet.edge_hide`。
+- **贴边隐藏** `pet/edge_hide.py`：拖到屏幕左右边缘松手即缩进屏幕外，只露 **24px** 桔子窄条
+  （`DEFAULT_EDGE_PX = DEFAULT_STRIP_PX = 24`）；
+  **只有把桔子拖离边缘并松手才恢复显示**，鼠标划过 / 悬停都不唤醒。状态持久化到 `config.json` 的 `pet.edge_hide`。
 - **鼠标穿透双模式**：交互模式可拖拽；穿透模式不拦截鼠标（`winutil` 里改窗口扩展样式）。
 - **托盘**：图标固定由 `lulu_002.gif` 首帧生成 64×64 PNG（`assets/tray_icon.png`，缺失时自动重建）；
   菜单必须用 `QMenu.popup()` 渲染，原生托盘菜单在此环境字体与项渲染异常。
@@ -68,6 +86,16 @@ docs/                 本文件 + superpowers 下的 spec / plan
   （默认显示缩放 `pet.scale = 0.5`；设置面板可调范围 0.5~2.0）。已存在的 `config.json` 不会被打包覆盖，
   改默认值后要让旧机器生效，需删掉该文件或手动改设置项。
 - **素材外置**：`assets/` 与 exe 平级存放，换素材只需替换 `assets/`（改代码或素材后仍需重新打包）。
+  打包时 `build.py` 会用 `_DEV_ONLY` 排除开发期产物（`.index.json` / `id_map.csv` /
+  `prepare_report.json` / `contact_sheet_*.png`），`assets/` 里只剩运行期必需文件。
+- **自主走动** `pet/wander.py`：`WANDER` 状态期间每 100ms 水平挪 4px（约 40px/s），碰屏幕左右缘
+  折返并把噜噜镜像转身。它只负责位移，走路的 GIF 由 `Behavior` 按 `walk` 分类播。
+- **气泡跟随**：`main` 里 `_follow_toast` 订阅 `Sprite.moved`（只在坐标真变时发），
+  拖拽 / 自主走动 / 贴边滑出等**所有**位移场景都会同步气泡。
+  不要在各个交互函数里分别补气泡位置——加一处新的位移逻辑时容易漏。
+- **`setWindowFlags()` 在 Windows 上会销毁重建窗口**（穿透模式切换会用到）：
+  调用后必须显式 `show()` 一次，否则噜噜会从桌面消失。
+- **自动更新**：见下面「自动更新」小节。
 
 ## 素材规范（改素材前必读）
 
@@ -90,31 +118,39 @@ docs/                 本文件 + superpowers 下的 spec / plan
 
 ```powershell
 cd capybara_pet
-python -m pytest -q                  # 全量测试，期望 155 passed
-python tools_cli/build.py            # 打包到 dist/momolulu/
-python tools_cli/prepare.py          # 素材预处理
-python tools_cli/contact_sheet.py    # 生成预览接触表
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 256 项且退出码 0（本机不打印汇总行）
+python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
+python tools_cli/prepare.py               # 素材预处理
+python tools_cli/contact_sheet.py         # 生成预览接触表
 ```
 
 ## 已确认的产品行为
 
 - **连点**：5 秒内连点 ≥5 次触发快速点击反馈（`sprite.py` 的 `_CLICK_WINDOW_S`）。
-- **贴边隐藏**：拖到屏幕左右边缘松手隐藏，露 48px 桔子条；拖离边缘松手才恢复。
+- **贴边隐藏**：拖到屏幕左右边缘松手隐藏，露 **24px** 桔子条；拖离边缘松手才恢复，悬停不唤醒。
+- **双击不打开设置**：设置入口**只在右键菜单**里（曾经的双击打开已移除，避免误触）。
 - **无状态气泡**：已移除"噜噜在 XXX"的悬停状态提示，相关配置项与设置面板勾选项一并删掉。
+- **自主走动**：`idle` 待久了会随机切到 `walk`，噜噜自己在桌面上慢慢走（约 40px/s），
+  走到屏幕边缘折返；走动时气泡一路跟随。
 - **提醒模块默认值**：`pomodoro` 关、`health_reminder` 开（喝水 45min / 久坐 60min）、
   `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关。
 
 ## 待办 / 未决
 
 1. 待机小动作中 `walk` 是否加权（目前 walk / sad / bath 等概率）。
-2. `docs/superpowers/` 下的 plan 与 spec 仍是**改名前的旧描述**（`lulu_pet`、悬停滑出 + 3s 缩回、
-   悬停气泡），尚未回写，读的时候注意甄别。
+2. `docs/superpowers/` 下 **2026-10-20 那份 spec / plan 是改名前的旧描述**（`lulu_pet`、
+   悬停滑出 + 3s 缩回、48px 桔子条、双击打开设置），**尚未回写**，读的时候注意甄别；
+   2026-10-21 那份（`2026-10-21-auto-update*`）是自动更新这一版，与代码一致。
 3. 开机自启项名已从 `LuluPet` 改为 `Momolulu`，旧注册表项可能残留：
    在设置面板里关一次再开一次自启，或手工删 `HKCU\...\Run\LuluPet`。
 4. aigei 采集候选约 254 张（约 630MB）仍在开发机的 `_stage_gifs/aigei/`，未入库、可清理。
-5. `assets/raw/`、`.index.json`、`id_map.csv`、`contact_sheet_*.png`、`tray_icon.png` 都在
-   `.gitignore` 里（体积 / 依赖 raw），clone 后只有 `processed` 的 11 张图与 `categories.json`；
-   完整素材链路需要另外传输。
+5. **更新分两条轨**（同一次启动检查里各自独立判断）：
+   - 素材热更：`info["asset_changes"]` 非空时**静默**下载替换 `assets/`，不打扰用户；
+   - 主程序更新：`info["package"]` 存在时**弹窗**征求同意，才下载整包自替换。
+6. `.gitignore` 覆盖 `dist/`、`*.spec`、`config.json`、`momolulu.log`、`.superpowers/`、
+   `assets/raw/`、`.index.json`、`id_map.csv`、`prepare_report.json`、`contact_sheet_*.png`、
+   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 11 张图与 `categories.json`；
+   完整素材链路（`raw/` 采集件与账本）需要另外传输。
 
 ## 在另一台电脑继续
 
@@ -123,7 +159,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q        # 期望 155 passed
+python -m pytest -q -p no:cacheprovider    # 期望 256 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。
@@ -132,12 +168,51 @@ python -m pytest -q        # 期望 155 passed
 （已确认 `%APPDATA%\Trae\User\workspaceStorage\` 下没有 chatSessions 之类的记录）。
 跨设备靠的是"仓库 + 本交接文档"，或在新客户端登录同一 Trae 账号看账号下的历史会话。
 
-## 发版（自动更新源）
+## 自动更新
 
-1. 改 `pet/version.py` 里的 `VERSION`
+两条轨，都在**启动 5 秒后**检查一次（仅打包版执行，脚本模式跳过——源码目录不是可替换的安装目录）。
+检查源是 `pet/updater.py` 里的常量 `LATEST_URL`
+（`https://raw.githubusercontent.com/zhuolk/momolulu/main/update/latest.json`）。
+
+- **素材热更（静默）**：比对 `latest.json` 的 `assets.files`（文件名 → md5）与本地 `assets/`，
+  有差异就后台下载替换，完成后重载 `categories.json`，弹一句「噜噜换新衣服啦」。
+  **不发新版本号也能生效**——把新 GIF 传到仓库 `assets/processed/` 即可。
+- **主程序更新（弹窗）**：`latest.json` 的 `package` 带整包 `url` / `sha256` / `size`。
+  本地版本低于远端时弹 `UpdatePrompt`，用户点「现在更新」才走：
+  下载整包 → 校验 sha256 与体积 → 解压到 `%TEMP%/momolulu-update/momolulu.new/`（剥掉 zip 顶层目录）
+  → 写 `updater.bat` → 退出主程序 → 由 bat 在进程结束后做目录交换（程序**自己覆盖不了自己**），
+  并保留用户 `config.json`、失败可回滚。
+
+踩过的坑（别再踩）：
+
+- **解压必须逐成员直接写最终路径，不要「先 `extractall` 再改名展平」**：实时杀软会短暂持有刚写出的
+  exe / dll 句柄，此时对目录改名 / 搬移会稳定吃 `WinError 5 拒绝访问`，整包永远装不上，
+  而 UI 上只表现为**「一直卡在正在下载」**（其实线程已失败，只是会晚一点恢复按钮）。
+  这条有回归测试盯着：
+  `tests/test_program_update.py::test_prepare_program_update_denied_rename_still_stages`
+  （把所有 rename / move 封成 `PermissionError(5)`，流程仍须落出完整暂存目录与 bat）。
+- 下载期弹窗显示百分比（**封顶 99%**，后面还有校验与解压，报 100% 会像卡住），
+  失败则追加「更新失败，已保留当前版本」。
+- **已安装的旧版本若自身带更新 bug，是没法靠自动更新自救的**（0.1.0 就卡在上面那个 `WinError 5`），
+  只能让用户手工换包。
+- 打包后是 `--noconsole`，出问题只能看安装目录下的 `momolulu.log`（`WARNING` 级起，utf-8）。
+
+## 发版
+
+1. 改 `pet/version.py` 的 `VERSION`
 2. `python tools_cli/build.py`
-3. `gh release create v<version> dist/momolulu-<version>.zip`
-4. 把 `dist/latest.json` 覆盖到仓库的 `update/latest.json`，`git push`
-5. 素材有变动时 `assets/` 已在 git 里，push 完即生效
+   → 产出 `dist/momolulu/`（onedir）、`dist/momolulu-<版本>.zip`、`dist/latest.json`
+   （注意 `dist/latest.json` 的 `notes` 是**空的**，发布前自己填）
+3. 建 GitHub Release 并上传整包。**本机没有 `gh` CLI**（`build.py` 末尾那两行 `gh` 提示只是文案），两条路：
+   - 网页手动：新建 tag `v<版本>` 的 Release，把 `dist/momolulu-<版本>.zip` 拖上去；
+   - 或 REST API（系统自带 `curl.exe`；PAT 从本机 Git 凭据管理器取）：
+     `POST https://api.github.com/repos/zhuolk/momolulu/releases` 建 release，
+     再 `POST https://uploads.github.com/repos/zhuolk/momolulu/releases/<id>/assets?name=momolulu-<版本>.zip`
+     上传资产。**上传后核对返回的 `digest`（sha256）与本地 `Get-FileHash` 是否逐字一致**。
+4. 把 `dist/latest.json` 的内容（**补上 `notes`**）覆盖到仓库 `update/latest.json`，`git push`
+   —— **顺序很重要：先让 Release 资产可下载，再推 `latest.json`**，否则用户会探测到新版却下载 404。
+5. 素材有变动时 `assets/` 已在 git 里，push 完即生效。
+6. 复核：`curl` 拉一次 raw 上的 `latest.json` 确认版本号与 `sha256` / `size` 对得上；
+   再对资产 URL 发一次 range 请求，确认返回 `206`。
 
 注意 `raw.githubusercontent.com` 有几分钟 CDN 缓存，push 完对方不一定立刻看到。
