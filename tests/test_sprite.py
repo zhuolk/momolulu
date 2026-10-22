@@ -140,6 +140,44 @@ def test_strip_mode_paints_orange_on_visible_side(qapp, tmp_path):
     assert image.pixelColor(image.width() // 2, image.height() // 2).alpha() > 0
 
 
+def test_move_to_emits_moved_only_when_position_changes(qapp, tmp_path):
+    """位置真的变了才发 `moved`（气泡按它跟随），原地重设不重复触发。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    got = []
+    s.moved.connect(lambda: got.append((s.x(), s.y())))
+
+    s.move_to(300, 400)
+    s.move_to(300, 400)
+    s.move_to(301, 400)
+
+    assert got == [(300, 400), (301, 400)]
+
+
+def test_flip_paints_mirrored_frame(qapp, tmp_path):
+    """向左走动时窗口水平镜像渲染，否则看起来是倒着走。"""
+    frame = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
+    for x in range(40):
+        for y in range(80):
+            frame.putpixel((x, y), (255, 0, 0, 255))  # 只有左半有像素
+    frame.save(tmp_path / "lulu_001.gif", save_all=True, append_images=[frame], duration=100, loop=0)
+
+    d = default_categories()
+    d["categories"]["idle"]["files"] = ["lulu_001.gif"]
+    add_unassigned(d, ["lulu_001.gif"], {"lulu_001.gif": "transparent"})
+    s = Sprite(d, tmp_path, DEFAULTS)
+    assert s.play("idle") is True
+
+    plain = s.grab().toImage()
+    width = plain.width()
+    assert plain.pixelColor(2, width // 2).alpha() > 0
+    assert plain.pixelColor(width - 3, width // 2).alpha() == 0
+
+    s.set_flip(True)
+    flipped = s.grab().toImage()
+    assert flipped.pixelColor(2, width // 2).alpha() == 0
+    assert flipped.pixelColor(width - 3, width // 2).alpha() > 0
+
+
 def test_click_and_right_click_emit_signals(qapp, tmp_path):
     s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
     got = []

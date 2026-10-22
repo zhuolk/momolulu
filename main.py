@@ -20,7 +20,7 @@ import modules.meal_reminder  # noqa: F401  导入即注册进 MODULE_CLASSES
 import modules.pomodoro  # noqa: F401  导入即把 Pomodoro 注册进 MODULE_CLASSES
 from modules.base import ModuleContext, build_modules
 from pet.autostart import default_command, set_enabled, sync
-from pet.behavior import PRIORITY_MODULE, Behavior
+from pet.behavior import PRIORITY_MODULE, WANDER, Behavior
 from pet.catalog import load_categories, pick
 from pet.config import load_config, save_config
 from pet.edge_hide import EdgeHider
@@ -29,6 +29,7 @@ from pet.tray import Tray, ensure_tray_icon
 from pet.update_runner import AssetUpdateThread, ProgramUpdateThread, UpdateCheckThread
 from pet.updater import LATEST_URL
 from pet.version import VERSION
+from pet.wander import Wanderer
 from pet.winutil import is_foreground_fullscreen, should_hide_pet
 from ui.menu import MENU_LABELS, MenuState, build_menu
 from ui.settings_dialog import SettingsDialog
@@ -124,6 +125,7 @@ class PetApp:
         self.sprite = Sprite(self.catalog, self.processed_dir, self.config)
         self.behavior = Behavior(self.sprite, self.config)
         self.edge_hider = EdgeHider(self.sprite, self.config, self._screens)
+        self.wanderer = Wanderer(self.sprite, self._screens)
         self.toast = Toast()
 
         self._save_timer = QTimer()
@@ -174,8 +176,8 @@ class PetApp:
         self.sprite.fast_clicked.connect(self.behavior.on_fast_click)
         self.sprite.fast_clicked.connect(self._on_fast_clicked)
         self.sprite.play_finished.connect(self.behavior.on_play_finished)
-        self.sprite.double_clicked.connect(self._on_double_clicked)
         self.sprite.right_clicked.connect(self._on_right_clicked)
+        self.sprite.moved.connect(self._follow_toast)
         self.app.screenAdded.connect(self._on_screens_changed)
         self.app.screenRemoved.connect(self._on_screens_changed)
 
@@ -191,14 +193,19 @@ class PetApp:
     def _show_toast(self, text: str, kind: str = "info", duration_ms: int = _TOAST_MS) -> None:
         self.toast.show_message(text, duration_ms=duration_ms, anchor=self._pet_anchor(), kind=kind)
 
+    def _follow_toast(self) -> None:
+        """噜噜位置变了（拖拽 / 自己走动 / 贴边滑出 / 屏幕变化）就让气泡跟着走。
+
+        气泡是独立顶层窗，不跟随就会钉在原地。
+        """
+        if self.toast.isVisible():
+            self.toast.move_above_anchor(*self._pet_anchor())
+
     def _on_clicked(self) -> None:
         self._show_toast(random.choice(CLICK_LINES))
 
     def _on_fast_clicked(self) -> None:
         self._show_toast(FAST_CLICK_LINE, kind="warn")
-
-    def _on_double_clicked(self) -> None:
-        self._open_settings()
 
     def _on_right_clicked(self, global_pos: QPoint) -> None:
         self._menu = self._build_menu()
@@ -350,6 +357,7 @@ class PetApp:
 
     def _on_tick(self) -> None:
         self.behavior.tick(datetime.now())
+        self.wanderer.tick(self.behavior.state == WANDER)
 
     # ------------------------------------------------------------ 全屏隐藏与多屏
 
@@ -575,8 +583,8 @@ class PetApp:
             (self.sprite.fast_clicked, self.behavior.on_fast_click),
             (self.sprite.fast_clicked, self._on_fast_clicked),
             (self.sprite.play_finished, self.behavior.on_play_finished),
-            (self.sprite.double_clicked, self._on_double_clicked),
             (self.sprite.right_clicked, self._on_right_clicked),
+            (self.sprite.moved, self._follow_toast),
             (self.app.screenAdded, self._on_screens_changed),
             (self.app.screenRemoved, self._on_screens_changed),
         ):

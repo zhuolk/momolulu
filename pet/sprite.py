@@ -130,6 +130,7 @@ class Sprite(QWidget):
     right_clicked = pyqtSignal(QPoint)
     drag_moved = pyqtSignal(QPoint)
     drag_finished = pyqtSignal(QPoint)
+    moved = pyqtSignal()
     play_finished = pyqtSignal(str)
     asset_missing = pyqtSignal()
 
@@ -151,6 +152,7 @@ class Sprite(QWidget):
         self._click_times: list[float] = []
         self._strip_side: str | None = None
         self._strip_px = STRIP_PX
+        self._flipped = False
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -166,8 +168,11 @@ class Sprite(QWidget):
             return
         if self._current_pixmap is None or self._current_pixmap.isNull():
             return
+        pixmap = self._current_pixmap
+        if self._flipped:
+            pixmap = QPixmap.fromImage(pixmap.toImage().mirrored(True, False))
         painter = QPainter(self)
-        painter.drawPixmap(0, 0, self._current_pixmap)
+        painter.drawPixmap(0, 0, pixmap)
 
     def _paint_strip(self) -> None:
         """在屏幕内的那一侧画桔子窄条（左侧隐藏贴窗口右缘，右侧隐藏贴窗口左缘）。
@@ -194,6 +199,13 @@ class Sprite(QWidget):
         self._strip_side = side
         self._strip_px = max(1, int(strip_px))
         self.update()
+
+    def set_flip(self, flipped: bool) -> None:
+        """水平镜像渲染（自动走动朝左时用），让噜噜转身而不是倒着走。"""
+        flipped = bool(flipped)
+        if flipped != self._flipped:
+            self._flipped = flipped
+            self.update()
 
     def _apply_pixmap(self, pixmap: QPixmap) -> None:
         self._current_pixmap = pixmap
@@ -341,7 +353,11 @@ class Sprite(QWidget):
         return len(self._movies)
 
     def move_to(self, x: int, y: int) -> None:
+        """把窗口移到 (x, y)；位置真的变了才发 `moved`（气泡按它跟随）。"""
+        before = self.pos()
         self.move(int(x), int(y))
+        if self.pos() != before:
+            self.moved.emit()
 
     def set_passthrough(self, on: bool) -> None:
         """切换鼠标穿透：开启后本窗口不拦截鼠标事件。"""

@@ -22,9 +22,10 @@ PRIORITY_DRAG = 4
 
 IDLE = "IDLE"
 DRAGGED = "DRAGGED"
+WANDER = "WANDER"
 
 # 分类 → 状态名（默认取分类大写，个别需要不同叫法）
-_STATE_NAMES = {"walk": "WANDER"}
+_STATE_NAMES = {"walk": WANDER}
 # 待机时可能触发的小动作（等概率随机取一个）
 _AUTO_ACTIONS = ("walk", "sad", "bath")
 _SLEEP_CHANCE = 0.5
