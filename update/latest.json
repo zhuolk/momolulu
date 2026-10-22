@@ -1,10 +1,10 @@
 {
-  "version": "0.1.0",
-  "notes": "",
+  "version": "0.2.0",
+  "notes": "噜噜会自己在桌面上走动了，气泡一路跟着；双击不再弹设置，改从右键菜单打开。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.1.0/momolulu-0.1.0.zip",
-    "sha256": "16d1e0f6608fe1775703d892a80b55f069ad42222f94c3cd9160ad8c8b7e8c65",
-    "size": 56406759
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.0/momolulu-0.2.0.zip",
+    "sha256": "2ab88a85ed1e69893fc0f7a15917bff5dd40fcc041acdb84266c256888d0f816",
+    "size": 56408739
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
