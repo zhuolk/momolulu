@@ -1,10 +1,10 @@
 {
-  "version": "0.2.2",
-  "notes": "新增「搞搞震 ▸ 散步」：噜噜会先瞬移到屏幕右下角，再沿屏幕边缘逆时针走一圈，四个拐角自动转身并保持脚贴边缘。",
+  "version": "0.2.3",
+  "notes": "修复自动更新卡住的问题：更新脚本会先把工作目录切出安装目录，否则旧目录被当前目录句柄占住、改名永远失败（表现为一直重试 ping，更新装不上）。装上本版后自动更新才真正可用。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.2/momolulu-0.2.2.zip",
-    "sha256": "fa7aec2aa452119b3a09c864c489e07aa4fa69507250ae01b4af2fac5b26592f",
-    "size": 56809131
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.3/momolulu-0.2.3.zip",
+    "sha256": "f1f20c3bcbc383e1650d7a066cee49f35d4aa0e5737ea3e5be38054dde650a43",
+    "size": 56808462
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",

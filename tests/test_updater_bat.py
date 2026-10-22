@@ -59,6 +59,19 @@ def test_bat_has_no_pid_based_liveness_check():
         assert keyword not in lower
 
 
+def test_bat_leaves_its_cwd_before_moving():
+    """cmd 的 cwd 若落在安装目录里（双击启动噜噜时就是安装目录），
+
+    该目录会被 cwd 句柄占住，`move "%TARGET%"` 必然失败，重试到耗尽都装不上。
+    所以脚本必须先把 cwd 切到自身所在目录（temp，安装目录之外）。
+    """
+    text = _text()
+    cd_at = text.index('cd /d "%~dp0"')
+    retry_at = text.index(":retry")
+    move_at = text.index('move "%TARGET%" "%OLD%"')
+    assert cd_at < retry_at < move_at
+
+
 def test_write_updater_bat_roundtrips_chinese_via_mbcs(tmp_path):
     text = _text(install_dir=Path(r"C:\Users\张三\Desktop\momolulu 桌宠"))
     path = write_updater_bat(tmp_path / "updater.bat", text)

@@ -10,8 +10,8 @@
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.2`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：277 个 pytest 用例全量通过
+- 当前版本：`0.2.3`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：278 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
@@ -62,7 +62,7 @@ tools_cli/            开发工具（不进产物）
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                277 个用例（pytest，conftest 里提供 qapp fixture）
+tests/                278 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + superpowers 下的 spec / plan
@@ -145,7 +145,7 @@ docs/                 本文件 + superpowers 下的 spec / plan
 
 ```powershell
 cd capybara_pet
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 277 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 278 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
@@ -189,7 +189,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 277 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 278 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。
@@ -215,6 +215,11 @@ python -m pytest -q -p no:cacheprovider    # 期望 277 项且退出码 0
 
 踩过的坑（别再踩）：
 
+- **`updater.bat` 第一步必须 `cd /d "%~dp0"` 把工作目录切出安装目录**：`cmd` 继承的是噜噜的 cwd，
+  而从资源管理器双击启动时 cwd 就是安装目录本身；Windows 下「某进程的当前目录」会一直持有该目录句柄，
+  导致 `move "%TARGET%" "%OLD%"` **每圈都失败**，30 次重试耗尽后走 `:failed` 重新拉起旧版，
+  于是又弹更新提示，循环往复。现象是**「点了确认更新后一直停在 ping -n 2 127.0.0.1」**
+  （ping 只是它的 1 秒定时器）。回归测试：`tests/test_updater_bat.py::test_bat_leaves_its_cwd_before_moving`。
 - **解压必须逐成员直接写最终路径，不要「先 `extractall` 再改名展平」**：实时杀软会短暂持有刚写出的
   exe / dll 句柄，此时对目录改名 / 搬移会稳定吃 `WinError 5 拒绝访问`，整包永远装不上，
   而 UI 上只表现为**「一直卡在正在下载」**（其实线程已失败，只是会晚一点恢复按钮）。

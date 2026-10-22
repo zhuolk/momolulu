@@ -24,7 +24,7 @@
 
 ## 测试
 
-- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **277** 个用例）。
+- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **278** 个用例）。
 - 本机 **不打印 `N passed` 汇总行**，判断全绿看**退出码是否为 0**；
   用例数用 `--collect-only -q -p no:cacheprovider` 逐文件求和交叉确认。
 - 加 `-p no:cacheprovider` 避免在仓库留下 `.pytest_cache`。
@@ -53,6 +53,9 @@
 ## 已知坑（别再踩）
 
 - **`setWindowFlags()` 在 Windows 上会销毁重建窗口**，调用后必须显式 `show()` 一次。
+- **`updater.bat` 第一步必须 `cd /d "%~dp0"`**：`cmd` 继承噜噜的 cwd（双击启动时就是安装目录），
+  而「进程 cwd 落在某目录里」会让该目录无法被 `move` / 改名，更新会一直重试到耗尽
+  （现象：点了确认更新后一直停在 `ping -n 2 127.0.0.1`）。
 - **解压更新包必须逐成员直接写最终路径**，不要「先 `extractall` 再改名展平」——
   杀软持句柄会让目录改名稳定吃 `WinError 5`，整包永远装不上（回归测试见
   `tests/test_program_update.py::test_prepare_program_update_denied_rename_still_stages`）。

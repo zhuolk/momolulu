@@ -5,7 +5,7 @@
 并支持启动时自动检查的素材热更与主程序自动更新。
 
 - 仓库：<https://github.com/zhuolk/momolulu>
-- 当前版本：`0.2.2`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 当前版本：`0.2.3`（唯一来源 `pet/version.py` 的 `VERSION`）
 - 平台：Windows
 
 ## 特性
@@ -71,7 +71,7 @@ python tools_cli/build.py              # 打包
 ## 开发
 
 ```powershell
-python -m pytest -q -p no:cacheprovider   # 全量测试（277 个用例）
+python -m pytest -q -p no:cacheprovider   # 全量测试（278 个用例）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 ```
 

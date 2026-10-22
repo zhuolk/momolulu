@@ -180,6 +180,10 @@ def apply_asset_update(changes: dict[str, str], base: str, local_dir: Path, fetc
 
 _BAT_TEMPLATE = """@echo off
 setlocal
+rem 0. 先把 cmd 的当前目录切走。cmd 继承的是噜噜的 cwd（从资源管理器双击启动时
+rem    就是安装目录本身），而「进程 cwd 落在某目录里」会让该目录无法被 move / 改名，
+rem    于是下面的 move 会一直失败到重试耗尽。%~dp0 是本脚本所在目录（temp，安装目录之外）。
+cd /d "%~dp0"
 set "TARGET={target}"
 set "NEW={new}"
 set "OLD={old}"
