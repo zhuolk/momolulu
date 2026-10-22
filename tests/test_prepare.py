@@ -5,13 +5,13 @@ from pet.catalog import load_categories
 
 
 def make_gif(path: Path, color=(30, 130, 210), frames=6):
-    # 主体必须 >= 画布 25%，否则被清除比例 > 0.75 会被判为 hard（见 spec §5.1-5）
+    # 管线要求素材**预先去背**：透明底 + 不透明主体，漏去背会被判失败
     imgs = []
     for _ in range(frames):
-        im = Image.new("RGB", (400, 400), (255, 255, 255))
+        im = Image.new("RGBA", (400, 400), (0, 0, 0, 0))
         for x in range(80, 320):
             for y in range(80, 320):
-                im.putpixel((x, y), color)
+                im.putpixel((x, y), (*color, 255))
         imgs.append(im)
     imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=60, loop=0)
 
@@ -72,6 +72,18 @@ def test_run_prepare_records_broken_file_and_continues(tmp_path):
     make_gif(raw / "good.gif"); (raw / "broken.gif").write_text("not a gif")
     rep = run_prepare(raw, out, cats, idx)
     assert rep["processed"] == 1 and [f["file"] for f in rep["failed"]] == ["broken.gif"]
+
+
+def test_run_prepare_reports_missing_alpha_as_failed(tmp_path):
+    """漏去背（无 alpha）的素材计为失败并点名，不静默出片。"""
+    raw, out, cats, idx = dirs(tmp_path)
+    make_gif(raw / "ok.gif")
+    Image.new("RGB", (400, 400), (255, 255, 255)).save(raw / "zzz_nomatte.gif")
+    rep = run_prepare(raw, out, cats, idx)
+    assert rep["processed"] == 1
+    assert [f["file"] for f in rep["failed"]] == ["zzz_nomatte.gif"]
+    assert "alpha" in rep["failed"][0]["error"]
+    assert [p.name for p in out.glob("*.gif")] == ["lulu_001.gif"]
 
 
 def test_run_prepare_sample_limits_and_reports_sizes(tmp_path):

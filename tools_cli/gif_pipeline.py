@@ -314,7 +314,12 @@ def process_gif(
     tol: int = TOL,
     edge_min: float = EDGE_MIN,
 ) -> dict:
-    """处理单个 GIF：判定轨道（透明 / 卡片）→ 去背 → 缩放 → 压缩 → 返回统计。"""
+    """处理单个 GIF：缩放 → 抽帧 → 压缩 → 返回统计。
+
+    素材一律要求**预先去背**（自带 alpha）；漏去背的素材直接抛 `ValueError`，
+    既不兜底套卡片轨、也不静默出片。`tol` / `edge_min` 是去背参数，
+    保留给本模块的 `remove_background` / `grade` 等去背函数使用。
+    """
     src = Path(src)
     dst = Path(dst)
     im = Image.open(src)
@@ -323,30 +328,13 @@ def process_gif(
     src_frames, durations = _load_frames(im)
     first_alpha = src_frames[0].getchannel("A").getextrema()[0] < 255
     has_src_alpha = first_alpha or im.info.get("transparency") is not None
+    if not has_src_alpha:
+        raise ValueError(f"{src.name}：素材没有 alpha 通道（未去背），请先去背再放进 raw/")
 
+    track, level = "transparent", "easy"
+    out_frames = src_frames
     cleaned_ratio = 0.0
     edge_ratio = 0.0
-    if has_src_alpha:
-        track, level = "transparent", "easy"
-        out_frames = src_frames
-    else:
-        bg = sample_background(src_frames[0].convert("RGB"), tol)
-        if bg is None:
-            track, level = "card", "hard"
-            out_frames = src_frames
-        else:
-            ratios = [
-                analyze_frame(src_frames[i].convert("RGB"), bg, tol)
-                for i in _sample_indices(len(src_frames))
-            ]
-            cleaned_ratio = sum(c for c, _ in ratios) / len(ratios)
-            edge_ratio = sum(e for _, e in ratios) / len(ratios)
-            level = grade(cleaned_ratio, edge_ratio, edge_min)
-            if level == "easy":
-                track = "transparent"
-                out_frames = [remove_background(f, bg, tol, erode=1) for f in src_frames]
-            else:
-                track, out_frames = "card", src_frames
 
     resized = [resize_frame(f, max_side) for f in out_frames]
     resample_frames, resample_durations = _resample(resized, durations, max_fps)
