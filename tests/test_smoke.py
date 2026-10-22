@@ -111,20 +111,20 @@ def test_toast_follows_pet_while_walking(qapp, tmp_path):
     app.shutdown()
 
 
-def test_stroll_from_menu_walks_along_screen_edge(qapp, tmp_path):
-    """搞搞震 ▸ 散步：从菜单入口出发，先瞬移到屏幕右下角并朝上沿右边走。"""
+def test_stroll_from_menu_walks_along_work_area_edge(qapp, tmp_path):
+    """搞搞震 ▸ 散步：先从菜单入口瞬移到工作区右下角（让开任务栏）再沿右边向上走。"""
     app = PetApp(root=build_root(tmp_path))
-    geo = QApplication.primaryScreen().geometry()
+    area = QApplication.primaryScreen().availableGeometry()
     app._menu_handlers()["stroll"]()
 
     assert app.behavior.state == STROLL
     assert app.stroller.active is True
-    assert app.sprite.x() == geo.x() + geo.width() - app.sprite.width()
-    assert app.sprite.y() == geo.y() + geo.height() - app.sprite.height()
+    assert app.sprite.x() == area.x() + area.width() - app.sprite.width()
+    assert app.sprite.y() == area.y() + area.height() - app.sprite.height()
 
-    app._on_tick()  # 走一帧：沿屏幕右边向上
-    assert app.sprite.x() == geo.x() + geo.width() - app.sprite.width()
-    assert app.sprite.y() == geo.y() + geo.height() - app.sprite.height() - STROLL_SPEED_PX
+    app._on_tick()  # 走一帧：沿工作区右边向上
+    assert app.sprite.x() == area.x() + area.width() - app.sprite.width()
+    assert app.sprite.y() == area.y() + area.height() - app.sprite.height() - STROLL_SPEED_PX
     app.shutdown()
 
 

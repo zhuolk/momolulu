@@ -24,7 +24,7 @@
 
 ## 测试
 
-- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **278** 个用例）。
+- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **280** 个用例）。
 - 本机 **不打印 `N passed` 汇总行**，判断全绿看**退出码是否为 0**；
   用例数用 `--collect-only -q -p no:cacheprovider` 逐文件求和交叉确认。
 - 加 `-p no:cacheprovider` 避免在仓库留下 `.pytest_cache`。
@@ -60,6 +60,9 @@
   杀软持句柄会让目录改名稳定吃 `WinError 5`，整包永远装不上（回归测试见
   `tests/test_program_update.py::test_prepare_program_update_denied_rename_still_stages`）。
 - 气泡跟随统一订阅 `Sprite.moved` 信号，**不要在各个交互函数里分别补气泡位置**。
+- **置顶 ≠ 能压住任务栏**：噜噜是 `WS_EX_TOPMOST`，任务栏同属置顶层，走进任务栏那条带里会被压住。
+  要贴着屏幕边走就用 `availableGeometry()`（工作区），别用 `geometry()`（整屏）。
+  但「噜噜在哪块屏」仍要按整屏矩形判断，否则它卡在任务栏带里时会被认成主屏。
 - `docs/superpowers/` 下 **2026-10-20 那份 spec / plan 是改名前的旧描述**，尚未回写，读时注意甄别；
   2026-10-21 那份（自动更新）与代码一致。
 - `.gitignore` 忽略 `dist/`、`*.spec`、`config.json`、`momolulu.log`、`.superpowers/`、

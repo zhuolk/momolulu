@@ -1,9 +1,12 @@
-"""`Stroller`：绕屏幕边缘逆时针走一圈的位移与旋转。"""
+"""`Stroller`：沿边缘逆时针走一圈的位移与旋转。"""
 
 from pet.stroll import STROLL_SPEED_PX, Stroller
 
 PRIMARY = (0, 0, 1920, 1080)
 LEFT_OF_PRIMARY = (-1920, 0, 1920, 1080)
+# 工作区：底边让出 48px 给任务栏
+WORK = (0, 0, 1920, 1032)
+WORK_LEFT_OF_PRIMARY = (-1920, 0, 1920, 1032)
 
 
 class FakeSprite:
@@ -50,11 +53,15 @@ class FakeSprite:
         return self.rotations[-1] if self.rotations else 0
 
 
-def make(sprite=None, screens=(PRIMARY,), finished=None, speed_px=STROLL_SPEED_PX):
+def make(sprite=None, screens=(PRIMARY,), finished=None, speed_px=STROLL_SPEED_PX, bounds=None):
     sprite = sprite if sprite is not None else FakeSprite()
     done = finished if finished is not None else []
     stroller = Stroller(
-        sprite, lambda: list(screens), speed_px=speed_px, on_finished=lambda: done.append("done")
+        sprite,
+        lambda: list(screens),
+        speed_px=speed_px,
+        on_finished=lambda: done.append("done"),
+        bounds_provider=(lambda: list(bounds)) if bounds is not None else None,
     )
     return sprite, stroller, done
 
@@ -66,6 +73,8 @@ def walk(stroller, ticks):
 
 # 120×120 的噜噜绕 1920×1080 走一圈：右段 960px、上段 1800px、左段 960px、下段 1800px
 UP_TICKS, SIDE_TICKS = 120, 225
+# 换工作区（高 1032）后，竖段只有 912px
+WORK_UP_TICKS = 114
 
 
 def test_start_teleports_to_bottom_right_and_faces_up():
@@ -164,3 +173,31 @@ def test_edge_hidden_pet_strolls_around_its_own_screen():
     sprite.strip_side = "left"
     assert stroller.start() is True
     assert (sprite.x(), sprite.y()) == (1800, 960)  # 仍是主屏（0..1920）的右下角
+
+
+def test_bottom_leg_runs_along_the_work_area_not_the_screen():
+    """底边那段要踩在工作区下沿（任务栏上沿），走进任务栏会被压住看不见。"""
+    sprite, stroller, done = make(screens=(PRIMARY,), bounds=(WORK,))
+    stroller.start()
+    assert (sprite.x(), sprite.y()) == (1800, 912)  # 1080 减 48px 任务栏，再减身高
+
+    walk(stroller, WORK_UP_TICKS)  # 右边向上
+    assert (sprite.x(), sprite.y()) == (1800, 0)  # 右上角
+    walk(stroller, SIDE_TICKS)  # 顶边向左
+    assert (sprite.x(), sprite.y()) == (0, 0)  # 左上角
+    walk(stroller, WORK_UP_TICKS)  # 左边向下
+    assert (sprite.x(), sprite.y()) == (0, 912)  # 左下角：踩任务栏上沿，不是整屏的 960
+    walk(stroller, SIDE_TICKS)  # 底边向右
+    assert (sprite.x(), sprite.y()) == (1800, 912)  # 走回起点
+    assert stroller.active is False and done == ["done"]
+
+
+def test_pet_inside_the_taskbar_strip_still_strolls_around_its_own_screen():
+    """噜噜正卡在任务栏那条带里（工作区判定不到它）时，仍要按整屏认出自己在哪块屏。"""
+    sprite, stroller, _ = make(
+        sprite=FakeSprite(x=-120, y=1000),
+        screens=(PRIMARY, LEFT_OF_PRIMARY),
+        bounds=(WORK, WORK_LEFT_OF_PRIMARY),
+    )
+    assert stroller.start() is True
+    assert (sprite.x(), sprite.y()) == (-120, 912)  # 左屏工作区的右下角，不是主屏

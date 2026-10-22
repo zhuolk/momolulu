@@ -128,7 +128,10 @@ class PetApp:
         self.edge_hider = EdgeHider(self.sprite, self.config, self._screens)
         self.wanderer = Wanderer(self.sprite, self._screens)
         self.stroller = Stroller(
-            self.sprite, self._screens, on_finished=self.behavior.on_stroll_finished
+            self.sprite,
+            self._screens,
+            on_finished=self.behavior.on_stroll_finished,
+            bounds_provider=self._work_areas,
         )
         self.toast = Toast()
 
@@ -542,6 +545,13 @@ class PetApp:
 
     def _screens(self) -> list[tuple[int, int, int, int]]:
         return [tuple(screen.geometry().getRect()) for screen in self.app.screens()]
+
+    def _work_areas(self) -> list[tuple[int, int, int, int]]:
+        """每块屏的工作区矩形（扣掉任务栏等系统保留区），与 `_screens()` 同序。
+
+        散步贴着它走，否则底边那段会落到任务栏所在的那条带里被压住看不见。
+        """
+        return [tuple(screen.availableGeometry().getRect()) for screen in self.app.screens()]
 
     def _start_ui(self) -> None:
         self.behavior.start()

@@ -10,8 +10,8 @@
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.3`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：278 个 pytest 用例全量通过
+- 当前版本：`0.2.4`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：280 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
@@ -41,7 +41,7 @@ pet/                  核心层
   sprite.py           无边框窗口 + GIF 播放 + 拖拽/连点/穿透 + 贴边条渲染 + moved 信号
   behavior.py         行为状态机（idle/walk/stroll/sleep/eat/... 与优先级）
   wander.py           自主走动（WANDER 期间水平挪 4px/100ms，碰边缘折返 + 镜像转身）
-  stroll.py           绕屏散步（STROLL 期间沿屏幕边缘逆时针走一圈，四角各转 90°）
+  stroll.py           绕屏散步（STROLL 期间沿工作区边缘逆时针走一圈，四角各转 90°）
   edge_hide.py        贴边隐藏（缩进屏幕外，只露 24px 桔子窄条）
   tray.py             托盘图标（固定取 lulu_002.gif）+ Qt 托盘菜单
   autostart.py        开机自启（注册表 Run 项，项名 Momolulu）
@@ -62,7 +62,7 @@ tools_cli/            开发工具（不进产物）
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                278 个用例（pytest，conftest 里提供 qapp fixture）
+tests/                280 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + superpowers 下的 spec / plan
@@ -96,12 +96,15 @@ docs/                 本文件 + superpowers 下的 spec / plan
 - **自主走动** `pet/wander.py`：`WANDER` 状态期间每 100ms 水平挪 4px（约 40px/s），碰屏幕左右缘
   折返并把噜噜镜像转身。它只负责位移，走路的 GIF 由 `Behavior` 按 `walk` 分类播。
 - **绕屏散步** `pet/stroll.py`：右键菜单「搞搞震 ▸ 散步」触发。`STROLL` 状态期间每 100ms
-  走 8px（约 80px/s）。起步先瞬移到当前屏右下角，再逆时针绕屏幕边缘一圈：
+  走 8px（约 80px/s）。起步先瞬移到当前屏右下角，再逆时针绕**工作区**边缘一圈：
   右边向上 → 顶边向左 → 左边向下 → 底边向右 → 回右下角。
   四角各逆时针转 90°（`_LEGS` 里的旋转角为 270 / 180 / 90 / 0；`QTransform.rotate()` 顺时针为正，
   故 270 即逆时针 90°）。素材是**正方形**，转 90° 不改窗口长宽，`setFixedSize` 因此不受影响。
   和 `wander.py` 一样只管位移，走路 GIF 由 `Behavior` 按 `stroll` 分类播；窗口移动发 `Sprite.moved`。
   素材朝右为基准 0°，所以走右边（向上）时是 270。
+  **贴的是「工作区」而不是整屏**：`main` 通过 `bounds_provider=self._work_areas` 传入
+  `availableGeometry()`，否则底边那段会走进任务栏那条带里被压住看不见（任务栏同为置顶层）。
+  用哪块屏仍按**整屏**矩形判断——噜噜卡在任务栏带里时工作区判定不到它。
 - **气泡跟随**：`main` 里 `_follow_toast` 订阅 `Sprite.moved`（只在坐标真变时发），
   拖拽 / 自主走动 / 散步 / 贴边滑出等**所有**位移场景都会同步气泡。
   不要在各个交互函数里分别补气泡位置——加一处新的位移逻辑时容易漏。
@@ -145,7 +148,7 @@ docs/                 本文件 + superpowers 下的 spec / plan
 
 ```powershell
 cd capybara_pet
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 278 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 280 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
@@ -159,9 +162,9 @@ python tools_cli/contact_sheet.py         # 生成预览接触表
 - **无状态气泡**：已移除"噜噜在 XXX"的悬停状态提示，相关配置项与设置面板勾选项一并删掉。
 - **自主走动**：`idle` 待久了会随机切到 `walk`，噜噜自己在桌面上慢慢走（约 40px/s），
   走到屏幕边缘折返；走动时气泡一路跟随。
-- **绕屏散步**：右键菜单「搞搞震 ▸ 散步」触发。噜噜先瞬移到当前屏右下角，再沿屏幕边缘
+- **绕屏散步**：右键菜单「搞搞震 ▸ 散步」触发。噜噜先瞬移到当前屏右下角，再沿**工作区**边缘
   逆时针走一圈（约 80px/s），四个拐角各逆时针转 90° 保持脚贴边，走完落回待机；
-  中途拖拽即中止散步。
+  中途拖拽即中止散步。底边那段踩在任务栏上沿，不会走进任务栏区域。
 - **提醒模块默认值**：`pomodoro` 关、`health_reminder` 开（喝水 45min / 久坐 60min）、
   `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关。
 
@@ -189,7 +192,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 278 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 280 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。

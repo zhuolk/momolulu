@@ -5,7 +5,12 @@
 
 路线起点与终点都是右下角，四段依次是「右边向上 → 顶边向左 → 左边向下 → 底边向右」。
 素材是朝右走的，所以旋转角以 0 为基准按逆时针 90° 递推（270 → 180 → 90 → 0），
-每一段都把噜噜的脚压在对应的屏幕边缘上。
+每一段都把噜噜的脚压在对应的边缘上。
+
+**贴的是「工作区」边缘而不是整屏边缘**：任务栏占着屏幕底边那一条（本机 48px），
+噜噜是置顶窗口但任务栏同属置顶层，走进去会被压住看不见。所以底边那段要按
+`availableGeometry` 内缩，脚踩在任务栏上沿；左 / 右 / 顶边通常不受影响，
+但任务栏挪到别的边时也一并避让。要按哪块屏算，仍然按**整屏**矩形判断。
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ _LEGS = (("y", -1, 270), ("x", -1, 180), ("y", 1, 90), ("x", 1, 0))
 
 
 class Stroller:
-    """把「散步」翻译成沿屏幕边缘的位移与整图旋转。"""
+    """把「散步」翻译成沿工作区边缘的位移与整图旋转。"""
 
     def __init__(
         self,
@@ -28,9 +33,12 @@ class Stroller:
         screens_provider: Callable[[], list[tuple[int, int, int, int]]],
         speed_px: int = STROLL_SPEED_PX,
         on_finished: Callable[[], None] | None = None,
+        bounds_provider: Callable[[], list[tuple[int, int, int, int]]] | None = None,
     ):
         self._sprite = sprite
         self._screens_provider = screens_provider
+        # 实际贴着走的矩形（工作区），与 `screens_provider` 同序同长；不给就整屏。
+        self._bounds_provider = bounds_provider
         self._speed_px = int(speed_px)
         self._on_finished = on_finished
         self._screen: tuple[int, int, int, int] | None = None
@@ -50,10 +58,10 @@ class Stroller:
 
     def start(self) -> bool:
         """瞬移到当前所在屏幕的右下角并起步；找不到屏幕时返回 False。"""
-        screen = self._find_screen()
-        if screen is None:
+        screens = self._screens_provider() or []
+        if not screens:
             return False
-        self._screen = screen
+        self._screen = self._walk_bounds(screens, self._find_screen(screens))
         self._leg = 0
         self._x, self._y = self._corner(0)
         self._active = True
@@ -125,15 +133,12 @@ class Stroller:
         bottom = float(sy + sh - self._sprite.height())
         return ((right, bottom), (right, top), (left, top), (left, bottom))[index % 4]
 
-    def _find_screen(self) -> tuple[int, int, int, int] | None:
-        """窗口所在的屏幕。
+    def _find_screen(self, screens: list[tuple[int, int, int, int]]) -> int:
+        """窗口所在屏幕的下标（按**整屏**矩形判断）。
 
         贴边缩回时窗口大半在屏外，窗口中心甚至可能已经压到邻屏上，只有露在屏内的
         桔子窄条一定在「自己那块屏」里，所以缩回时只按那一侧取参考点。
         """
-        screens = self._screens_provider() or []
-        if not screens:
-            return None
         x, y = self._sprite.x(), self._sprite.y()
         width, height = self._sprite.width(), self._sprite.height()
         middle = y + height // 2
@@ -145,8 +150,17 @@ class Stroller:
         else:
             points = ((x + width // 2, middle), (x + width - 1, middle), (x, middle))
         for px, py in points:
-            for screen in screens:
+            for index, screen in enumerate(screens):
                 sx, sy, sw, sh = screen
                 if sx <= px < sx + sw and sy <= py < sy + sh:
-                    return screen
-        return screens[0]
+                    return index
+        return 0
+
+    def _walk_bounds(
+        self, screens: list[tuple[int, int, int, int]], index: int
+    ) -> tuple[int, int, int, int]:
+        """该屏幕实际贴着走的矩形：给了 `bounds_provider`（工作区）就用它，否则整屏。"""
+        if self._bounds_provider is None:
+            return screens[index]
+        bounds = self._bounds_provider() or []
+        return bounds[index] if index < len(bounds) else screens[index]

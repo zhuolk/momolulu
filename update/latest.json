@@ -1,10 +1,10 @@
 {
-  "version": "0.2.3",
-  "notes": "修复自动更新卡住的问题：更新脚本会先把工作目录切出安装目录，否则旧目录被当前目录句柄占住、改名永远失败（表现为一直重试 ping，更新装不上）。装上本版后自动更新才真正可用。",
+  "version": "0.2.4",
+  "notes": "修复散步走到屏幕下方被任务栏压住的问题：散步改为贴着「工作区」边缘走，底边那段踩在任务栏上沿，不再钻进任务栏那条带里被挡住。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.3/momolulu-0.2.3.zip",
-    "sha256": "f1f20c3bcbc383e1650d7a066cee49f35d4aa0e5737ea3e5be38054dde650a43",
-    "size": 56808462
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.4/momolulu-0.2.4.zip",
+    "sha256": "7b5e4f253841bcabd872225bdf173a875e0d9c2d00c15e772fb541015d205dbd",
+    "size": 56810683
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",

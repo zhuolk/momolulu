@@ -5,7 +5,7 @@
 并支持启动时自动检查的素材热更与主程序自动更新。
 
 - 仓库：<https://github.com/zhuolk/momolulu>
-- 当前版本：`0.2.3`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 当前版本：`0.2.4`（唯一来源 `pet/version.py` 的 `VERSION`）
 - 平台：Windows
 
 ## 特性
@@ -14,7 +14,8 @@
 - **行为状态机**：待机一段时间后随机触发小动作（走路 / 难过 / 洗澡），带优先级抢占。
 - **自主走动**：待机久了会在桌面上慢慢走（约 40px/s），碰到屏幕边缘折返并转身。
 - **绕屏散步**（右键「搞搞震 ▸ 散步」）：先瞬移到屏幕右下角，再沿屏幕边缘逆时针走一圈，
-  四角各逆时针转 90° 保持脚贴边，走完落回待机，中途拖拽即中止。
+  四角各逆时针转 90° 保持脚贴边，走完落回待机，中途拖拽即中止。贴着**任务栏上沿**走，
+  不会钻进任务栏那条带里被压住。
 - **贴边隐藏**：拖到屏幕左右边缘松手即缩进屏幕外，只露 24px 桔子窄条；把窄条拖离边缘才恢复。
 - **鼠标穿透双模式**：交互模式可拖拽；穿透模式不拦截鼠标点击。
 - **提醒模块**：番茄钟、喝水 / 久坐提醒、吃饭提醒、整点报时（各自独立开关）。
@@ -27,6 +28,17 @@
 
 到 [Releases](https://github.com/zhuolk/momolulu/releases) 下载最新整包 `momolulu-<版本>.zip`，
 解压后运行 `momolulu.exe`。**必须保留整个目录**（含 `_internal/` 运行时与 `assets/`），单拿一个 exe 无法运行。
+
+> **被 SmartScreen 拦住（"Windows 已保护你的电脑"）怎么办**
+>
+> 程序没有做代码签名，而下载来的 zip 带有「来自网络」标记，解压时这个标记会传给每个文件，
+> 于是 exe 会被 SmartScreen 拦截。**解压前**先给 zip 解除锁定即可避免：
+> zip 右键 → 属性 → 勾选底部的「解除锁定」→ 确定，然后再解压。
+> 已经解压了就在 PowerShell 里对解压目录补一刀：
+>
+> ```powershell
+> Get-ChildItem "解压目录" -Recurse -File | Unblock-File
+> ```
 
 ### 从源码运行
 
@@ -71,7 +83,7 @@ python tools_cli/build.py              # 打包
 ## 开发
 
 ```powershell
-python -m pytest -q -p no:cacheprovider   # 全量测试（278 个用例）
+python -m pytest -q -p no:cacheprovider   # 全量测试（280 个用例）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 ```
 
