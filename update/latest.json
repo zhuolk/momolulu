@@ -1,10 +1,10 @@
 {
-  "version": "0.2.0",
-  "notes": "噜噜会自己在桌面上走动了，气泡一路跟着；双击不再弹设置，改从右键菜单打开。",
+  "version": "0.2.1",
+  "notes": "修复点「现在更新」后一直卡在下载、装不上的问题；下载时会显示百分比进度。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.0/momolulu-0.2.0.zip",
-    "sha256": "2ab88a85ed1e69893fc0f7a15917bff5dd40fcc041acdb84266c256888d0f816",
-    "size": 56408739
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.1/momolulu-0.2.1.zip",
+    "sha256": "e46e43ef0c6072780cc2255cc598e24e3d7ee1d6718a84cef002fdb35fd4d193",
+    "size": 56411455
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
