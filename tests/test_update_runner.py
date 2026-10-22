@@ -1,13 +1,36 @@
+import hashlib
 import json
 import threading
+import zipfile
 from pathlib import Path
 
 from pet.download import md5_bytes, UpdateError
 from pet.updater import check_for_update
-from pet.update_runner import AssetUpdateThread, UpdateCheckThread
+from pet.update_runner import AssetUpdateThread, ProgramUpdateThread, UpdateCheckThread
 
 URL = "https://raw.githubusercontent.com/zhuolk/momolulu/main/update/latest.json"
 BASE = "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/"
+
+
+def _make_zip(path: Path, entries: dict[str, bytes], root: str = "momolulu") -> Path:
+    with zipfile.ZipFile(path, "w") as zf:
+        for rel, data in entries.items():
+            zf.writestr(f"{root}/{rel}", data)
+    return path
+
+
+def _zip_info(zip_path: Path) -> dict:
+    raw = zip_path.read_bytes()
+    return {
+        "version": "0.2.0",
+        "notes": "",
+        "package": {
+            "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.0/momolulu-0.2.0.zip",
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "size": len(raw),
+        },
+        "assets": {"base": BASE, "files": {"categories.json": "d" * 32}},
+    }
 
 
 def _payload(version: str, files: dict[str, str]) -> bytes:
@@ -202,3 +225,74 @@ def test_asset_update_thread_is_silent_when_diff_raises(qapp, tmp_path, monkeypa
         qapp.processEvents()
 
     assert got == [[]]
+
+
+def test_program_update_thread_reports_download_progress(qapp, tmp_path, monkeypatch):
+    # 走默认下载引擎（download=None）才会把 progress 接上：这里的 fake 顶替的就是它。
+    payload = _make_zip(
+        tmp_path / "src.zip", {"momolulu.exe": b"exe", "_internal/x.txt": b"x"}
+    ).read_bytes()
+    install = tmp_path / "app" / "momolulu"
+    install.mkdir(parents=True)
+    (install / "momolulu.exe").write_bytes(b"old")
+
+    def fake_download_file(url, dest, timeout=5.0, opener=None, progress=None):
+        Path(dest).write_bytes(payload)
+        if progress is not None:
+            total = len(payload)
+            progress(total // 4, total)
+            progress(total // 2, total)
+            progress(total, total)
+        return Path(dest)
+
+    monkeypatch.setattr("pet.updater.download_file", fake_download_file)
+
+    thread = ProgramUpdateThread(_zip_info(tmp_path / "src.zip"), install, tmp_path / "temp")
+    percents = []
+    staged = []
+    thread.progressed.connect(percents.append)
+    thread.staged.connect(staged.append)
+
+    thread.start()
+    assert thread.wait(5000) is True
+    for _ in range(50):
+        if staged:
+            break
+        qapp.processEvents()
+
+    assert percents == [25, 50, 99]                # 收尾停在 99：后面还有校验与解压
+    assert len(staged) == 1 and staged[0] is not None
+
+
+def test_program_update_progress_converges_and_skips_duplicates(qapp, tmp_path):
+    thread = ProgramUpdateThread({"version": "0.2.0"}, tmp_path, tmp_path / "temp")
+    percents = []
+    thread.progressed.connect(percents.append)
+
+    thread._on_progress(1, 10)      # 10%
+    thread._on_progress(1, 10)      # 百分比没变：不能重复发，否则弹窗被刷爆
+    thread._on_progress(2, 10)      # 20%
+
+    assert percents == [10, 20]
+
+
+def test_program_update_progress_ignores_unknown_total(qapp, tmp_path):
+    thread = ProgramUpdateThread({"version": "0.2.0"}, tmp_path, tmp_path / "temp")
+    percents = []
+    thread.progressed.connect(percents.append)
+
+    thread._on_progress(5, 0)       # Content-Length 缺失：总量未知，不报进度
+    thread._on_progress(5, -1)
+
+    assert percents == []
+
+
+def test_program_update_progress_never_reaches_100(qapp, tmp_path):
+    thread = ProgramUpdateThread({"version": "0.2.0"}, tmp_path, tmp_path / "temp")
+    percents = []
+    thread.progressed.connect(percents.append)
+
+    thread._on_progress(10, 10)
+    thread._on_progress(11, 10)     # done 溢出也不许报 100% 或更多
+
+    assert percents == [99]

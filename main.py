@@ -490,8 +490,12 @@ class PetApp:
         self._update_prompt.set_busy(True)
         thread = ProgramUpdateThread(info, self.root, Path(tempfile.gettempdir()) / "momolulu-update")
         thread.staged.connect(self._on_program_staged)
+        thread.progressed.connect(self._on_program_progress)
         self._program_thread = thread
         thread.start()
+
+    def _on_program_progress(self, percent: int) -> None:
+        self._update_prompt.set_download_progress(percent)
 
     def _on_program_staged(self, bat) -> None:
         if bat is None:

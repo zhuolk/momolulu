@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import zipfile
+from functools import partial
 from pathlib import Path
 
 from pet.download import (
@@ -255,7 +256,7 @@ def write_updater_bat(path: Path, text: str) -> Path:
     return path
 
 
-def _download_zip(info: dict, temp_root: Path, download) -> Path:
+def _download_zip(info: dict, temp_root: Path, download, progress=None) -> Path:
     package = info.get("package") or {}
     version = info.get("version") or "unknown"
     work = Path(temp_root) / version
@@ -268,7 +269,8 @@ def _download_zip(info: dict, temp_root: Path, download) -> Path:
         raise UpdateError("package.sha256 非法")
     if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
         raise UpdateError("package.size 非法")
-    engine = download if download is not None else download_file
+    # 只有默认引擎认识 progress；注入进来的 download 保持 (url, dest) 这个窄契约。
+    engine = download if download is not None else partial(download_file, progress=progress)
     engine(url, zip_path)
     if not zip_path.is_file():
         raise UpdateError("下载未产生文件")
@@ -279,29 +281,56 @@ def _download_zip(info: dict, temp_root: Path, download) -> Path:
     return zip_path
 
 
+def _zip_top_prefix(zf: zipfile.ZipFile) -> str:
+    """zip 只有一个顶层目录时返回 `顶层目录/`，否则返回空串（表示不剥前缀）。"""
+    tops = {
+        name.replace("\\", "/").split("/", 1)[0]
+        for name in zf.namelist()
+        if name.strip("/")
+    }
+    return f"{next(iter(tops))}/" if len(tops) == 1 else ""
+
+
 def _extract(zip_path: Path, staged_root: Path) -> Path:
-    """解压并展平：zip 根是 `momolulu/`，处理后 `staged_root` 本身就是新的安装目录。"""
+    """解压并剥掉顶层目录：zip 根是 `momolulu/`，处理后 `staged_root` 本身就是新安装目录。
+
+    这里刻意不走「extractall + 改名展平」：解压出的 exe/dll 会被实时杀软短暂持有句柄，
+    此时对目录改名或搬移会稳定吃 `WinError 5 拒绝访问`，整包就永远装不上。
+    逐成员直接写到最终路径，全程零改名零搬移，从根上绕开这个竞态。
+    """
     staged_root = Path(staged_root)
     shutil.rmtree(staged_root, ignore_errors=True)
     staged_root.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(staged_root)
-    top = list(staged_root.iterdir())
-    if len(top) == 1 and top[0].is_dir():
-        holder = staged_root / "_flatten"
-        top[0].rename(holder)
-        for child in list(holder.iterdir()):
-            shutil.move(str(child), str(staged_root / child.name))
-        holder.rmdir()
+        prefix = _zip_top_prefix(zf)
+        for member in zf.infolist():
+            rel = member.filename.replace("\\", "/")
+            if prefix and rel.startswith(prefix):
+                rel = rel[len(prefix):]
+            target = safe_relpath(rel)
+            if target is None or member.is_dir():
+                continue
+            dest = staged_root / target
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, open(dest, "wb") as dst:
+                shutil.copyfileobj(src, dst)
     if not (staged_root / "momolulu.exe").is_file():
         raise UpdateError("整包结构异常：找不到 momolulu.exe")
     return staged_root
 
 
 def prepare_program_update(
-    info: dict, install_dir: Path, temp_root: Path, download=None, retries: int = 30
+    info: dict,
+    install_dir: Path,
+    temp_root: Path,
+    download=None,
+    retries: int = 30,
+    progress=None,
 ) -> Path:
-    """下载并校验整包、解压到暂存目录、写出 updater.bat；失败时不留任何中间产物。"""
+    """下载并校验整包、解压到暂存目录、写出 updater.bat；失败时不留任何中间产物。
+
+    `progress` 透传给默认下载引擎（见 `_download_zip`），用于上报下载百分比。
+    """
     package = info.get("package")
     if not isinstance(package, dict):
         raise UpdateError("latest.json 未提供程序整包")
@@ -323,7 +352,7 @@ def prepare_program_update(
         shutil.rmtree(work_dir, ignore_errors=True)
 
     try:
-        downloaded = _download_zip(info, temp_root, download)
+        downloaded = _download_zip(info, temp_root, download, progress)
         staged = _extract(downloaded, staged_root)
         backup = install_dir.with_name(install_dir.name + ".old")
         text = build_updater_bat(install_dir, staged, backup, retries=retries)

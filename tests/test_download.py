@@ -94,8 +94,9 @@ def test_fetch_bytes_wraps_oserror_as_update_error():
 class ChunkedResponse:
     """按块产出字节，模拟 download_file 的流式 read(size)。"""
 
-    def __init__(self, chunks: list[bytes]):
+    def __init__(self, chunks: list[bytes], headers: dict | None = None):
         self._chunks = list(chunks)
+        self.headers = headers or {}
 
     def read(self, size: int = -1) -> bytes:
         return self._chunks.pop(0) if self._chunks else b""
@@ -108,13 +109,14 @@ class ChunkedResponse:
 
 
 class ChunkedOpener:
-    def __init__(self, chunks: list[bytes]):
+    def __init__(self, chunks: list[bytes], headers: dict | None = None):
         self.chunks = chunks
+        self.headers = headers or {}
         self.urls = []
 
     def open(self, url, timeout=None):
         self.urls.append(getattr(url, "full_url", url))
-        return ChunkedResponse(self.chunks)
+        return ChunkedResponse(self.chunks, self.headers)
 
 
 def test_download_file_writes_all_bytes_and_returns_path(tmp_path):
@@ -143,3 +145,37 @@ def test_download_file_rejects_non_whitelisted_url_without_touching_network(tmp_
     with pytest.raises(UpdateError):
         download_file("http://raw.githubusercontent.com/x", tmp_path / "pkg.zip", opener=opener)
     assert opener.urls == []
+
+
+def test_download_file_reports_progress_with_total(tmp_path):
+    opener = ChunkedOpener([b"aa", b"bb", b"cc"], headers={"Content-Length": "6"})
+    seen = []
+
+    download_file(
+        "https://github.com/x",
+        tmp_path / "pkg.zip",
+        opener=opener,
+        progress=lambda done, total: seen.append((done, total)),
+    )
+
+    assert seen == [(2, 6), (4, 6), (6, 6)]
+
+
+def test_download_file_progress_total_is_zero_without_content_length(tmp_path):
+    # 拿不到 Content-Length（分块传输、代理改写）时必须传 0 表示总量未知，不能瞎猜。
+    for headers in ({}, {"Content-Length": ""}, {"Content-Length": "abc"}, {"Content-Length": "-1"}):
+        opener = ChunkedOpener([b"aa", b"bb"], headers=headers)
+        seen = []
+        download_file(
+            "https://github.com/x",
+            tmp_path / "pkg.zip",
+            opener=opener,
+            progress=lambda done, total: seen.append((done, total)),
+        )
+        assert seen == [(2, 0), (4, 0)], headers
+
+
+def test_download_file_without_progress_callback_still_works(tmp_path):
+    opener = ChunkedOpener([b"aa", b"bb"], headers={"Content-Length": "4"})
+    dest = download_file("https://github.com/x", tmp_path / "pkg.zip", opener=opener)
+    assert dest.read_bytes() == b"aabb"

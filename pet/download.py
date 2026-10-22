@@ -74,8 +74,30 @@ def fetch_bytes(url: str, timeout: float = DEFAULT_TIMEOUT, opener=None) -> byte
         raise UpdateError(f"读取失败：{url}（{exc}）") from exc
 
 
-def download_file(url: str, dest: Path, timeout: float = DEFAULT_TIMEOUT, opener=None) -> Path:
+def _content_length(response) -> int:
+    """响应声明的总字节数；缺失或非法时返回 0，表示「总量未知」。"""
+    try:
+        value = response.headers.get("Content-Length")
+    except (AttributeError, ValueError, TypeError):
+        return 0
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return size if size > 0 else 0
+
+
+def download_file(
+    url: str,
+    dest: Path,
+    timeout: float = DEFAULT_TIMEOUT,
+    opener=None,
+    progress=None,
+) -> Path:
     """流式下载到 dest（54MB 的整包不能整体读进内存）。
+
+    `progress` 是可选回调 `progress(done, total)`：每写完一块回调一次，
+    `total` 取响应的 Content-Length，拿不到时传 0（调用方按「总量未知」处理）。
 
     dest 契约：
     - dest 应当是临时/草稿路径，不要在最终文件路径上直接调用本函数；
@@ -86,12 +108,17 @@ def download_file(url: str, dest: Path, timeout: float = DEFAULT_TIMEOUT, opener
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         with _open(url, timeout, opener) as response:
+            total = _content_length(response)
+            done = 0
             with open(dest, "wb") as fp:
                 while True:
                     chunk = response.read(1 << 20)
                     if not chunk:
                         break
                     fp.write(chunk)
+                    done += len(chunk)
+                    if progress is not None:
+                        progress(done, total)
     except UpdateError:
         dest.unlink(missing_ok=True)
         raise

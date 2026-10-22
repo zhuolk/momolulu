@@ -1,4 +1,5 @@
 import hashlib
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -64,6 +65,41 @@ def test_prepare_program_update_stages_and_writes_bat(tmp_path):
     assert bat.read_bytes().startswith(b"@echo off")
     staged = tmp_path / "temp" / "momolulu.new"
     assert (staged / "momolulu.exe").read_bytes() == b"exe"
+    assert (install / "momolulu.exe").read_bytes() == b"old"     # 安装目录未被触碰
+
+
+def test_prepare_program_update_denied_rename_still_stages(tmp_path, monkeypatch):
+    """实时杀软会短暂持有刚解压出的 exe 句柄，此时任何改名/搬移都必吃 WinError 5。
+
+    所以暂存阶段必须零改名零搬移：这里把所有改名与搬移都封成拒绝访问，
+    流程仍要能正常落出齐整的暂存目录与 bat。
+    """
+    zip_path = _make_zip(
+        tmp_path / "src.zip",
+        {"momolulu.exe": b"exe", "_internal/x.txt": b"x", "assets/a.gif": b"gif"},
+    )
+    install = tmp_path / "app" / "momolulu"
+    install.mkdir(parents=True)
+    (install / "momolulu.exe").write_bytes(b"old")
+
+    def download(url: str, dest: Path, timeout: float = 5.0) -> Path:
+        dest.write_bytes(zip_path.read_bytes())
+        return dest
+
+    def denied(*args, **kwargs):
+        raise PermissionError(5, "拒绝访问。")
+
+    monkeypatch.setattr(Path, "rename", denied)
+    monkeypatch.setattr(Path, "replace", denied)
+    monkeypatch.setattr(shutil, "move", denied)
+
+    bat = prepare_program_update(_info(zip_path), install, tmp_path / "temp", download=download)
+
+    staged = tmp_path / "temp" / "momolulu.new"
+    assert (staged / "momolulu.exe").read_bytes() == b"exe"      # 顶层目录已被剥掉
+    assert (staged / "_internal" / "x.txt").read_bytes() == b"x"
+    assert (staged / "assets" / "a.gif").read_bytes() == b"gif"
+    assert bat.exists()
     assert (install / "momolulu.exe").read_bytes() == b"old"     # 安装目录未被触碰
 
 

@@ -88,6 +88,13 @@ class UpdatePrompt(QWidget):
         self._status = str(text) if text else (BUSY_TEXT if self._busy else "")
         self._refresh()
 
+    def set_download_progress(self, percent: int) -> None:
+        """下载期间刷新百分比；已经出了结果（非忙态）时迟到的进度不覆盖文案。"""
+        if not self._busy:
+            return
+        self._status = f"{BUSY_TEXT}{int(percent)}%"
+        self._refresh()
+
     # ------------------------------------------------------------ 内部实现
 
     def _accept(self) -> None:
