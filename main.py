@@ -20,11 +20,12 @@ import modules.meal_reminder  # noqa: F401  导入即注册进 MODULE_CLASSES
 import modules.pomodoro  # noqa: F401  导入即把 Pomodoro 注册进 MODULE_CLASSES
 from modules.base import ModuleContext, build_modules
 from pet.autostart import default_command, set_enabled, sync
-from pet.behavior import PRIORITY_MODULE, WANDER, Behavior
+from pet.behavior import PRIORITY_MODULE, STROLL, WANDER, Behavior
 from pet.catalog import load_categories, pick
 from pet.config import load_config, save_config
 from pet.edge_hide import EdgeHider
 from pet.sprite import Sprite
+from pet.stroll import Stroller
 from pet.tray import Tray, ensure_tray_icon
 from pet.update_runner import AssetUpdateThread, ProgramUpdateThread, UpdateCheckThread
 from pet.updater import LATEST_URL
@@ -126,6 +127,9 @@ class PetApp:
         self.behavior = Behavior(self.sprite, self.config)
         self.edge_hider = EdgeHider(self.sprite, self.config, self._screens)
         self.wanderer = Wanderer(self.sprite, self._screens)
+        self.stroller = Stroller(
+            self.sprite, self._screens, on_finished=self.behavior.on_stroll_finished
+        )
         self.toast = Toast()
 
         self._save_timer = QTimer()
@@ -247,6 +251,7 @@ class PetApp:
             "toggle_passthrough": self._toggle_passthrough,
             "toggle_module": self._toggle_module,
             "pomodoro": self._pomodoro,
+            "stroll": self._start_stroll,
             "open_settings": self._open_settings,
             "toggle_autostart": self._toggle_autostart,
             "update_now": self._update_now,
@@ -314,6 +319,21 @@ class PetApp:
         elif action == "reset":
             module.reset()
 
+    def _start_stroll(self) -> None:
+        """搞搞震 ▸ 散步：瞬移到当前屏的右下角，沿屏幕边缘逆时针走一圈。"""
+        if self.stroller.active:
+            return
+        if not self.behavior.request("stroll", PRIORITY_MODULE, once=False):
+            self._show_toast("散步素材缺失", kind="warn")
+            return
+        # 贴边缩回时窗口大半在屏外，得先靠露在屏内的桔子条认屏幕，再退出贴边隐藏
+        started = self.stroller.start()
+        self.edge_hider.detach()
+        if not started:
+            self.behavior.on_stroll_finished()
+            return
+        self._show_toast("噜噜去散步啦")
+
     def _open_settings(self) -> None:
         """打开设置面板；保存后立即生效。"""
         dialog = SettingsDialog(self.config, self.sprite)
@@ -357,7 +377,12 @@ class PetApp:
 
     def _on_tick(self) -> None:
         self.behavior.tick(datetime.now())
-        self.wanderer.tick(self.behavior.state == WANDER)
+        state = self.behavior.state
+        if state == STROLL:
+            self.stroller.tick()
+        else:  # 走完一圈或被拖拽/其他行为抢走：停下并恢复直立
+            self.stroller.stop()
+        self.wanderer.tick(state == WANDER)
 
     # ------------------------------------------------------------ 全屏隐藏与多屏
 

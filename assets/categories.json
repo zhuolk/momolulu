@@ -15,6 +15,12 @@
       ],
       "track": "card"
     },
+    "stroll": {
+      "files": [
+        "lulu_012.gif"
+      ],
+      "track": "transparent"
+    },
     "sleep": {
       "files": [
         "lulu_006.gif"
@@ -74,6 +80,7 @@
     "lulu_008.gif": "card",
     "lulu_009.gif": "transparent",
     "lulu_010.gif": "transparent",
-    "lulu_011.gif": "transparent"
+    "lulu_011.gif": "transparent",
+    "lulu_012.gif": "transparent"
   }
 }

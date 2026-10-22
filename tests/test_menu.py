@@ -20,6 +20,7 @@ class Handlers:
         self.toggle_autostart = lambda: self.calls.append(("autostart",))
         self.quit = lambda: self.calls.append(("quit",))
         self.update_now = lambda: self.calls.append(("update_now",))
+        self.stroll = lambda: self.calls.append(("stroll",))
 
 
 MODS = {"pomodoro": False, "water": True, "sit": True, "meal": True, "hourly": False}
@@ -163,3 +164,22 @@ def test_update_item_sits_before_settings(qapp):
 def test_existing_five_arg_calls_still_work(qapp):
     m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
     assert "设置…" in actions(m)
+
+
+def test_interact_submenu_holds_stroll(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    assert "搞搞震" in actions(m)
+    assert "散步" in actions(actions(m)["搞搞震"].menu())
+
+
+def test_interact_submenu_sits_after_tools_before_settings(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    order = [a.text().replace("&", "") for a in m.actions()]
+    assert order.index("实用工具") < order.index("搞搞震") < order.index("设置…")
+
+
+def test_stroll_triggers_handler(qapp):
+    h = Handlers()
+    m = build_menu(None, MenuState(True, False, False, MODS, False), h.__dict__)
+    actions(actions(m)["搞搞震"].menu())["散步"].trigger()
+    assert ("stroll",) in h.calls

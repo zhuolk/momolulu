@@ -178,6 +178,50 @@ def test_flip_paints_mirrored_frame(qapp, tmp_path):
     assert flipped.pixelColor(width - 3, width // 2).alpha() > 0
 
 
+def test_rotation_paints_frame_turned_clockwise(qapp, tmp_path):
+    """绕屏转弯时窗口整图旋转，让噜噜的脚始终朝着屏幕边缘。"""
+    frame = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
+    for x in range(80):
+        for y in range(40):
+            frame.putpixel((x, y), (255, 0, 0, 255))  # 只有上半有像素
+    frame.save(tmp_path / "lulu_001.gif", save_all=True, append_images=[frame], duration=100, loop=0)
+
+    d = default_categories()
+    d["categories"]["idle"]["files"] = ["lulu_001.gif"]
+    add_unassigned(d, ["lulu_001.gif"], {"lulu_001.gif": "transparent"})
+    s = Sprite(d, tmp_path, DEFAULTS)
+    assert s.play("idle") is True
+
+    plain = s.grab().toImage()
+    width, height = plain.width(), plain.height()
+    assert plain.pixelColor(width // 2, 2).alpha() > 0
+    assert plain.pixelColor(width // 2, height - 3).alpha() == 0
+
+    s.set_rotation(90)  # 顺时针 90°：上半转到右半
+    turned = s.grab().toImage()
+    assert turned.pixelColor(width - 3, height // 2).alpha() > 0
+    assert turned.pixelColor(2, height // 2).alpha() == 0
+
+    s.set_rotation(180)  # 再转 90°：上半转到底半
+    upside_down = s.grab().toImage()
+    assert upside_down.pixelColor(width // 2, height - 3).alpha() > 0
+    assert upside_down.pixelColor(width // 2, 2).alpha() == 0
+
+    s.set_rotation(0)
+    restored = s.grab().toImage()
+    assert restored.pixelColor(width // 2, 2).alpha() > 0
+
+
+def test_rotation_keeps_window_size(qapp, tmp_path):
+    """素材是正方形，转 90° 不该改变窗口长宽（否则贴边对齐会漂）。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    s.play("idle")
+    before = s.size()
+    for deg in (90, 180, 270, 0):
+        s.set_rotation(deg)
+        assert s.size() == before
+
+
 def test_click_and_right_click_emit_signals(qapp, tmp_path):
     s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
     got = []

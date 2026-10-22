@@ -95,3 +95,29 @@ def test_stop_freezes_transitions(qapp):
     b.stop(); b.force_wander_chance(1.0)
     clock.adv(seconds=9999); b.tick(clock())
     assert b.state == "IDLE"
+
+
+def test_stroll_is_a_sustained_module_state(qapp):
+    """散步是持续（`once=False`）的模块级状态：待机随机动作不能把它抢回 idle。"""
+    b, sp, clock = make()
+    assert b.request("stroll", PRIORITY_MODULE, once=False) is True
+    assert b.state == "STROLL"
+    b.force_wander_chance(1.0)
+    clock.adv(seconds=9999); b.tick(clock())
+    assert b.state == "STROLL"
+
+
+def test_stroll_finished_returns_to_idle(qapp):
+    b, sp, _ = make()
+    b.request("stroll", PRIORITY_MODULE, once=False)
+    b.on_stroll_finished()
+    assert b.state == "IDLE" and sp.played[-1] == ("idle", False)
+
+
+def test_stroll_finished_ignored_when_other_state_took_over(qapp):
+    """被拖拽抢走后，散步的收尾回调不该把状态从别处拽回待机。"""
+    b, sp, _ = make()
+    b.request("stroll", PRIORITY_MODULE, once=False)
+    b.on_drag_started()
+    b.on_stroll_finished()
+    assert b.state == "DRAGGED"

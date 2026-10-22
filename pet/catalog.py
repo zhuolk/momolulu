@@ -22,6 +22,7 @@ from pathlib import Path
 CATEGORIES: tuple[str, ...] = (
     "idle",
     "walk",
+    "stroll",
     "sleep",
     "eat",
     "drink",

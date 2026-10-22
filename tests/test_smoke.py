@@ -8,9 +8,10 @@ from PyQt5.QtWidgets import QApplication
 
 import main as pet_main
 from main import PetApp
-from pet.behavior import PRIORITY_AUTO, WANDER
+from pet.behavior import PRIORITY_AUTO, STROLL, WANDER
 from pet.catalog import default_categories, save_categories
 from pet.config import DEFAULTS, save_config
+from pet.stroll import STROLL_SPEED_PX
 from pet.wander import WALK_SPEED_PX
 from ui.toast import ANCHOR_GAP
 
@@ -25,6 +26,7 @@ def build_root(tmp_path: Path) -> Path:
     data["categories"]["idle"]["files"] = ["lulu_001.gif", "lulu_002.gif"]
     data["categories"]["happy"]["files"] = ["lulu_003.gif"]
     data["categories"]["walk"]["files"] = ["lulu_001.gif"]
+    data["categories"]["stroll"]["files"] = ["lulu_002.gif"]
     save_categories(tmp_path / "assets" / "categories.json", data)
     save_config(tmp_path / "config.json", DEFAULTS)
     return tmp_path
@@ -109,8 +111,26 @@ def test_toast_follows_pet_while_walking(qapp, tmp_path):
     app.shutdown()
 
 
+def test_stroll_from_menu_walks_along_screen_edge(qapp, tmp_path):
+    """搞搞震 ▸ 散步：从菜单入口出发，先瞬移到屏幕右下角并朝上沿右边走。"""
+    app = PetApp(root=build_root(tmp_path))
+    geo = QApplication.primaryScreen().geometry()
+    app._menu_handlers()["stroll"]()
+
+    assert app.behavior.state == STROLL
+    assert app.stroller.active is True
+    assert app.sprite.x() == geo.x() + geo.width() - app.sprite.width()
+    assert app.sprite.y() == geo.y() + geo.height() - app.sprite.height()
+
+    app._on_tick()  # 走一帧：沿屏幕右边向上
+    assert app.sprite.x() == geo.x() + geo.width() - app.sprite.width()
+    assert app.sprite.y() == geo.y() + geo.height() - app.sprite.height() - STROLL_SPEED_PX
+    app.shutdown()
+
+
 def test_double_click_does_not_open_settings(qapp, tmp_path, monkeypatch):
     """双击噜噜不再弹设置面板，设置只从右键菜单进。"""
+
     opened = []
 
     class _FakeSignal:

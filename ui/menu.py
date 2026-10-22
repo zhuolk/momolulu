@@ -115,6 +115,11 @@ def build_menu(parent, state: MenuState, handlers) -> QMenu:
 
     menu.addSeparator()
 
+    interact = menu.addMenu("搞搞震")
+    interact.addAction("散步").triggered.connect(_slot(handlers, "stroll"))
+
+    menu.addSeparator()
+
     if state.update_version:
         update = menu.addAction(f"立即更新到 {state.update_version}")
         update.triggered.connect(_slot(handlers, "update_now"))

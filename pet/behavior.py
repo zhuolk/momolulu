@@ -23,9 +23,10 @@ PRIORITY_DRAG = 4
 IDLE = "IDLE"
 DRAGGED = "DRAGGED"
 WANDER = "WANDER"
+STROLL = "STROLL"
 
 # 分类 → 状态名（默认取分类大写，个别需要不同叫法）
-_STATE_NAMES = {"walk": WANDER}
+_STATE_NAMES = {"walk": WANDER, "stroll": STROLL}
 # 待机时可能触发的小动作（等概率随机取一个）
 _AUTO_ACTIONS = ("walk", "sad", "bath")
 _SLEEP_CHANCE = 0.5
@@ -126,6 +127,11 @@ class Behavior(QObject):
     def on_play_finished(self, category: str) -> None:
         """一次性播放播完后回待机（仅当当前状态正是该分类驱动）。"""
         if self._once and self._state_category == category:
+            self._to_idle()
+
+    def on_stroll_finished(self) -> None:
+        """绕屏一圈走完：回待机（仅当当前状态仍是散步驱动的）。"""
+        if self._state == STROLL:
             self._to_idle()
 
     # ------------------------------------------------------------ 推进

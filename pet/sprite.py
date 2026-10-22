@@ -13,7 +13,16 @@ from collections import OrderedDict
 
 from PIL import Image
 from PyQt5.QtCore import QPoint, QRectF, QSize, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QImage, QMovie, QPainter, QPainterPath, QPen, QPixmap
+from PyQt5.QtGui import (
+    QColor,
+    QImage,
+    QMovie,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QTransform,
+)
 from PyQt5.QtWidgets import QWidget
 
 from pet.catalog import pick, track_of
@@ -153,6 +162,7 @@ class Sprite(QWidget):
         self._strip_side: str | None = None
         self._strip_px = STRIP_PX
         self._flipped = False
+        self._rotation = 0
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -171,8 +181,14 @@ class Sprite(QWidget):
         pixmap = self._current_pixmap
         if self._flipped:
             pixmap = QPixmap.fromImage(pixmap.toImage().mirrored(True, False))
+        if self._rotation:
+            pixmap = pixmap.transformed(QTransform().rotate(self._rotation))
         painter = QPainter(self)
-        painter.drawPixmap(0, 0, pixmap)
+        painter.drawPixmap(
+            (self.width() - pixmap.width()) // 2,
+            (self.height() - pixmap.height()) // 2,
+            pixmap,
+        )
 
     def _paint_strip(self) -> None:
         """在屏幕内的那一侧画桔子窄条（左侧隐藏贴窗口右缘，右侧隐藏贴窗口左缘）。
@@ -205,6 +221,18 @@ class Sprite(QWidget):
         flipped = bool(flipped)
         if flipped != self._flipped:
             self._flipped = flipped
+            self.update()
+
+    def set_rotation(self, deg: int) -> None:
+        """整图顺时针旋转渲染（散步绕屏转弯时用），只接受 0/90/180/270。
+
+        素材是正方形，转 90° 不改变画布长宽，窗口尺寸因此不用跟着调整。
+        """
+        deg = int(deg) % 360
+        if deg not in (0, 90, 180, 270):
+            deg = 0
+        if deg != self._rotation:
+            self._rotation = deg
             self.update()
 
     def _apply_pixmap(self, pixmap: QPixmap) -> None:

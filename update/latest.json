@@ -1,10 +1,10 @@
 {
-  "version": "0.2.1",
-  "notes": "修复点「现在更新」后一直卡在下载、装不上的问题；下载时会显示百分比进度。",
+  "version": "0.2.2",
+  "notes": "新增「搞搞震 ▸ 散步」：噜噜会先瞬移到屏幕右下角，再沿屏幕边缘逆时针走一圈，四个拐角自动转身并保持脚贴边缘。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.1/momolulu-0.2.1.zip",
-    "sha256": "e46e43ef0c6072780cc2255cc598e24e3d7ee1d6718a84cef002fdb35fd4d193",
-    "size": 56411455
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.2/momolulu-0.2.2.zip",
+    "sha256": "fa7aec2aa452119b3a09c864c489e07aa4fa69507250ae01b4af2fac5b26592f",
+    "size": 56809131
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
@@ -20,7 +20,8 @@
       "processed/lulu_009.gif": "11b0f07844f20ae85afde91287449988",
       "processed/lulu_010.gif": "368bd65e15dfb02e0ca9b0a5a328865e",
       "processed/lulu_011.gif": "3ae5ca84057f9be3f6f9256f35d0ef94",
-      "categories.json": "2baa78e1e2c731417e56cdc3c42c5db8"
+      "processed/lulu_012.gif": "9df36bcc1e05b50ae64cafa7fac94e51",
+      "categories.json": "e8112ab6459fcea87b4d0936c380625b"
     }
   }
 }
