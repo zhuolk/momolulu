@@ -15,8 +15,18 @@ def test_default_structure_and_fallback_chain():
     d = default_categories()
     assert set(CATEGORIES) | {"unassigned"} <= set(d["categories"]) and d["version"] == 3
     for c in CATEGORIES:
-        assert FALLBACK[c][0] == c and FALLBACK[c][-1] == "unassigned"
+        assert FALLBACK[c][0] == c
+        if c != "stroll":  # 散步是唯一不回退的分类，单独在下面断言
+            assert FALLBACK[c][-1] == "unassigned"
     assert FALLBACK["drink"] == ("drink", "eat", "idle", "unassigned")
+
+
+def test_stroll_never_falls_back_to_other_categories(tmp_path):
+    """散步只认 stroll：该类没素材就返回 None（调用方提示缺失），不借待机素材凑数。"""
+    assert FALLBACK["stroll"] == ("stroll",)
+    d = default_categories()
+    d["categories"]["idle"]["files"] = ["lulu_001.gif"]  # 索引非空，但 stroll 是空的
+    assert pick(d, "stroll", prep(tmp_path, ("lulu_001.gif",))) is None
 
 
 def test_new_categories_fall_back_to_the_closest_old_one():

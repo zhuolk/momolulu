@@ -31,7 +31,7 @@ from pet.update_runner import AssetUpdateThread, ProgramUpdateThread, UpdateChec
 from pet.updater import LATEST_URL
 from pet.version import VERSION
 from pet.wander import Wanderer
-from pet.winutil import is_foreground_fullscreen, should_hide_pet
+from pet.winutil import acquire_single_instance, is_foreground_fullscreen, should_hide_pet
 from ui.menu import MENU_LABELS, MenuState, build_menu
 from ui.settings_dialog import SettingsDialog
 from ui.toast import Toast
@@ -677,6 +677,10 @@ def main() -> int:
         )
     except Exception:  # noqa: BLE001 - 日志不可写绝不能影响噜噜运行
         pass
+    if not acquire_single_instance():
+        # 已有噜噜在跑（重复双击 exe / 自启与手动启动撞车）：静默退位，不再起第二个
+        logging.warning("检测到已有噜噜在运行，本次启动直接退出")
+        return 0
     return PetApp().run()
 
 

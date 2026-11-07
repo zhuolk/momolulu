@@ -9,6 +9,14 @@ dist/
 build/
 *.spec
 
+# 打包用本地 Python 与构建虚拟环境（本机生成，不入库）
+.python312/
+.venv-build/
+.venv-matte/
+
+# 去背实验残留（体积大，无代码引用，不入库）
+/models/
+
 # 运行期生成
 config.json
 momolulu.log

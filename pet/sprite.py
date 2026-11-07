@@ -153,6 +153,7 @@ class Sprite(QWidget):
         self._movies: "OrderedDict[str, QMovie]" = OrderedDict()
         self._current_movie: QMovie | None = None
         self._current_category: str | None = None
+        self._once_category: str | None = None
         self._current_pixmap: QPixmap | None = None
         self._frozen = False
         self._pressed = False
@@ -273,6 +274,7 @@ class Sprite(QWidget):
         if not frame_size.isEmpty():
             movie.setScaledSize(QSize(int(frame_size.width() * scale), int(frame_size.height() * scale)))
         movie.frameChanged.connect(self._on_frame_changed)
+        movie.frameChanged.connect(self._on_frame_advanced)
         self._movies[key] = movie
         self._evict_movies()
         return movie
@@ -297,6 +299,33 @@ class Sprite(QWidget):
         if self._render_track != "card":
             return QPixmap.fromImage(image)
         return render_frame(_qimage_to_pil(image), "card")
+
+    def _on_frame_advanced(self, *_args) -> None:
+        """「只播一次」的素材走到最后一帧就收尾（与冻结无关，冻住也要照常计数）。
+
+        不能用 `QMovie.finished`：Qt5 对 GIF 不认 `loopCount` 属性，播几遍由**文件自带**的
+        Netscape 循环次数决定，而素材文件写的都是 0（无限循环），所以标了「只播一次」的素材
+        照样一直循环、`finished` 永远不发出。这里自己盯帧号兜底。
+        """
+        if self._once_category is None or self._current_movie is None:
+            return
+        movie = self._current_movie
+        count = movie.frameCount()
+        if count <= 0 or movie.currentFrameNumber() < count - 1:
+            return
+        self._on_once_finished(self._once_category)
+
+    def _on_once_finished(self, category: str) -> None:
+        """只播一次的素材收尾：停在最后一帧（已画在窗口上，不会闪回第一帧）并报出分类。
+
+        `finished` 信号与帧号兜底都会走到这里，用 `_once_category` 保证只报一次。
+        """
+        if self._once_category != category:
+            return
+        self._once_category = None
+        if self._current_movie is not None:
+            self._current_movie.stop()
+        self.play_finished.emit(category)
 
     def play(self, category: str) -> bool:
         """按分类挑一个素材播放；素材缺失时显示占位图并返回 False。
@@ -326,13 +355,17 @@ class Sprite(QWidget):
             return False
 
         loopable = loops_of(self._catalog, path.name)
-        movie.loopCount = -1 if loopable else 1  # PyQt 里 loopCount 是属性；-1 = 一直循环
+        # PyQt 里 loopCount 是属性（-1 = 一直循环）。注意 Qt 对 GIF 不认这个属性：
+        # 播几遍由 GIF 文件自带的 Netscape 循环次数说了算，所以「只播一次」的停止时机
+        # 靠 `_on_frame_advanced` 盯帧号兜底，别指望 `finished` 会发出来。
+        movie.loopCount = -1 if loopable else 1
+        self._once_category = None if loopable else category
         try:
             movie.finished.disconnect()  # 同一影片会被反复复用，避免回调累积
         except TypeError:
             pass
         if not loopable:
-            movie.finished.connect(lambda cat=category: self.play_finished.emit(cat))
+            movie.finished.connect(lambda cat=category: self._on_once_finished(cat))
 
         if movie is not self._current_movie:
             if self._current_movie is not None:
@@ -364,6 +397,7 @@ class Sprite(QWidget):
             movie.setFileName("")
         self._movies.clear()
         self._current_movie = None
+        self._once_category = None
 
     def reload(self) -> None:
         """清空影片缓存并按当前分类重新加载（缩放等渲染参数变化后调用）。"""

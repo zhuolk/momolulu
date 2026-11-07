@@ -47,6 +47,9 @@ VERSION = 3
 
 # 回退链：找不到目标分类时逐级降级，最后落到 unassigned
 FALLBACK: dict[str, tuple[str, ...]] = {name: (name, "idle", UNASSIGNED) for name in CATEGORIES}
+# 散步是唯一不回退的分类：只认 stroll，没素材就干脆不散步（由调用方提示缺失），
+# 免得散步时突然改播待机素材、原地打转。
+FALLBACK["stroll"] = ("stroll",)
 FALLBACK["drink"] = ("drink", "eat", "idle", UNASSIGNED)
 FALLBACK["cry"] = ("cry", "sad", "idle", UNASSIGNED)
 FALLBACK["move"] = ("move", "walk", "idle", UNASSIGNED)

@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -11,7 +12,8 @@ from pet.sprite import Sprite, placeholder_pixmap, render_frame
 
 
 def make_gif(path: Path, frames=4, size=(320, 320)):
-    imgs = [Image.new("RGB", size, (255, 255, 255)) for _ in range(frames)]
+    # 每帧颜色必须不同：PIL 会把完全相同的连续帧合并，退化成单帧 GIF
+    imgs = [Image.new("RGB", size, (20 * i, 20 * i, 20 * i)) for i in range(frames)]
     imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=100, loop=0)
 
 
@@ -85,6 +87,44 @@ def test_single_shot_asset_restarts_when_played_again(qapp, tmp_path):
     s.current_movie().stop()  # 模拟播完最后一帧后 QMovie 自行停下
 
     assert s.play("idle") is True
+    assert s.current_movie().state() == QMovie.Running
+
+
+def drive_movie(qapp, seconds=0.0, until=None):
+    """跑事件循环推进 GIF（QMovie 靠内部定时器走帧，必须处理事件）。"""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if until is not None and until():
+            return True
+        qapp.processEvents()
+        time.sleep(0.005)
+    return bool(until()) if until is not None else True
+
+
+def test_single_shot_asset_stops_after_one_cycle(qapp, tmp_path):
+    """回归：Qt 对 GIF 不认 `loopCount`（`finished` 永不发），只播一次的素材必须靠帧号兜底停下。
+
+    测试素材 4 帧 × 100ms = 一轮约 0.4s。
+    """
+    s = Sprite(catalog_with(tmp_path, loops={"lulu_001.gif": False}), tmp_path, DEFAULTS)
+    reported = []
+    s.play_finished.connect(reported.append)
+
+    assert s.play("idle") is True
+    assert drive_movie(qapp, seconds=3.0, until=lambda: bool(reported))
+    assert reported == ["idle"]
+    assert s.current_movie().state() == QMovie.NotRunning
+
+
+def test_loopable_asset_never_stops_by_itself(qapp, tmp_path):
+    """可循环素材跑满好几轮也不会自己停下、不会报「播完」。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    reported = []
+    s.play_finished.connect(reported.append)
+
+    assert s.play("idle") is True
+    drive_movie(qapp, seconds=0.6)  # 一轮 0.4s，这里跑过一轮半
+    assert reported == []
     assert s.current_movie().state() == QMovie.Running
 
 

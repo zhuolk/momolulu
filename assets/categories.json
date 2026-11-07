@@ -14,14 +14,14 @@
     },
     "walk": {
       "files": [
-        "lulu_006.gif",
-        "lulu_014.gif",
-        "lulu_026.gif"
+        "lulu_014.gif"
       ],
       "track": "auto"
     },
     "stroll": {
-      "files": [],
+      "files": [
+        "lulu_026.gif"
+      ],
       "track": "auto"
     },
     "sleep": {
@@ -113,7 +113,9 @@
       "track": "auto"
     },
     "unassigned": {
-      "files": [],
+      "files": [
+        "lulu_006.gif"
+      ],
       "track": "auto"
     }
   },

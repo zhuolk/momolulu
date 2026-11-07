@@ -1,4 +1,7 @@
-from pet.winutil import rect_covers, should_hide_pet
+import uuid
+
+from pet import winutil
+from pet.winutil import acquire_single_instance, rect_covers, should_hide_pet
 
 SCREEN = (0, 0, 1920, 1080)
 
@@ -22,3 +25,30 @@ def test_should_hide_pet_matrix():
     assert should_hide_pet(True, False) is False
     assert should_hide_pet(False, True) is False
     assert should_hide_pet(False, False) is False
+
+
+def _unique_mutex() -> str:
+    """每个用例用独立互斥体名，免得互相抢（同名第二次占位必定失败）。"""
+    return rf"Local\momolulu-test-{uuid.uuid4()}"
+
+
+def test_second_launch_with_same_mutex_is_rejected():
+    """连点两次 exe 只留一只噜噜：同名互斥体第二次占位必须失败。"""
+    name = _unique_mutex()
+    assert acquire_single_instance(name) is True
+    assert acquire_single_instance(name) is False
+
+
+def test_different_mutex_names_do_not_conflict():
+    assert acquire_single_instance(_unique_mutex()) is True
+    assert acquire_single_instance(_unique_mutex()) is True
+
+
+def test_guard_failure_allows_start(monkeypatch):
+    """守卫自身加载不起来（非 Windows / 出错）时放行，不能把噜噜挡在门外。"""
+
+    def boom():
+        raise OSError("kernel32 不可用")
+
+    monkeypatch.setattr(winutil, "_kernel32_lib", boom)
+    assert acquire_single_instance(_unique_mutex()) is True
