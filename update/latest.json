@@ -1,27 +1,41 @@
 {
-  "version": "0.2.4",
-  "notes": "修复散步走到屏幕下方被任务栏压住的问题：散步改为贴着「工作区」边缘走，底边那段踩在任务栏上沿，不再钻进任务栏那条带里被挡住。",
+  "version": "0.2.5",
+  "notes": "素材整批更新为 26 张并新增 8 个表情分类，区分「只播一次」与「可循环」。修复三处问题：「只播一次」的素材实际一直在循环播放；重复双击程序会同时开出多只噜噜；散步会拿待机素材凑数。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.4/momolulu-0.2.4.zip",
-    "sha256": "7b5e4f253841bcabd872225bdf173a875e0d9c2d00c15e772fb541015d205dbd",
-    "size": 56810683
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.5/momolulu-0.2.5.zip",
+    "sha256": "a448b3b8d23dbde53537e51985f275f860d134248fc734f7e022e600de2adcdd",
+    "size": 55471684
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
     "files": {
-      "processed/lulu_001.gif": "b2d246c5f9728cb70b32446f1db21468",
-      "processed/lulu_002.gif": "5d5fe993c04b009d475079936d3b25d4",
-      "processed/lulu_003.gif": "a8eaaedc69eae6902e2f8f0aba2d5d45",
-      "processed/lulu_004.gif": "6b046b674f71f464bec034a505871624",
-      "processed/lulu_005.gif": "4e8a781890ba635c660b1aef1bc8db45",
-      "processed/lulu_006.gif": "43e523dde22b12e76d9d6732ecd2398c",
-      "processed/lulu_007.gif": "165de25e79b78a7dcd9e3fc537f9d194",
-      "processed/lulu_008.gif": "ef34aa2b43a4a1c40339701d05deb232",
-      "processed/lulu_009.gif": "11b0f07844f20ae85afde91287449988",
-      "processed/lulu_010.gif": "368bd65e15dfb02e0ca9b0a5a328865e",
-      "processed/lulu_011.gif": "3ae5ca84057f9be3f6f9256f35d0ef94",
-      "processed/lulu_012.gif": "9df36bcc1e05b50ae64cafa7fac94e51",
-      "categories.json": "e8112ab6459fcea87b4d0936c380625b"
+      "processed/lulu_001.gif": "d530750b01432d45c2170dd419975538",
+      "processed/lulu_002.gif": "2275752e24edd61aaa5b230fae5177e0",
+      "processed/lulu_003.gif": "40ed4f7831d3c40dcb5352424fbbc536",
+      "processed/lulu_004.gif": "27a03d0ef9f47b3876ee605b45d0f5f6",
+      "processed/lulu_005.gif": "c811df1e5e33f9dbf5a81a0e2d5b8bd9",
+      "processed/lulu_006.gif": "a28f636772c46fc13c7ebaf11beb3de4",
+      "processed/lulu_007.gif": "3a26e8d6d0c5f0876380b2d0a092416c",
+      "processed/lulu_008.gif": "9f17ebf32c93ee9a6c100d2a7b15bd99",
+      "processed/lulu_009.gif": "ab15c78bf0dfdc9c7118012538a0168d",
+      "processed/lulu_010.gif": "678f49402ae23be9264a448d18b24f0c",
+      "processed/lulu_011.gif": "daba884874afccfda2db9e822785be37",
+      "processed/lulu_012.gif": "d3c703634b6bb05201af810c78cd71d3",
+      "processed/lulu_013.gif": "bc950d0a601db95a2230d1747acd5f8a",
+      "processed/lulu_014.gif": "eed000fcf0c0ed611f63d5526f5e7b8b",
+      "processed/lulu_015.gif": "89ae7c4ccd3056af95b0ddfed67b20f2",
+      "processed/lulu_016.gif": "aa4aef79b3360a3681cb094b82281953",
+      "processed/lulu_017.gif": "8001ea5e5cc2a6050774635d1d104e69",
+      "processed/lulu_018.gif": "5e38012171b47c33adedf493fccd02c8",
+      "processed/lulu_019.gif": "76d6f839b070a9c5b88fb46c79d8745e",
+      "processed/lulu_020.gif": "4c28c8b9271c45507ca99c501a21f379",
+      "processed/lulu_021.gif": "c87f16384096945d7a66eeb55e067ca0",
+      "processed/lulu_022.gif": "5d5fe993c04b009d475079936d3b25d4",
+      "processed/lulu_023.gif": "6b046b674f71f464bec034a505871624",
+      "processed/lulu_024.gif": "11b0f07844f20ae85afde91287449988",
+      "processed/lulu_025.gif": "368bd65e15dfb02e0ca9b0a5a328865e",
+      "processed/lulu_026.gif": "9df36bcc1e05b50ae64cafa7fac94e51",
+      "categories.json": "a65812c80ff138de36e084c030d950bb"
     }
   }
 }
