@@ -29,8 +29,14 @@ APP_NAME = "momolulu"
 ENTRY = "main.py"
 REPO = "zhuolk/momolulu"
 
-# 开发期文件：`prepare.py` / `contact_sheet.py` 的产物，运行期一个都不读，不外发。
-_DEV_ONLY = (".index.json", "id_map.csv", "prepare_report.json", "contact_sheet_*.png")
+# 开发期文件：`prepare.py` / `contact_sheet.py` / `assign.py` 的产物，运行期一个都不读，不外发。
+_DEV_ONLY = (
+    ".index.json",
+    "id_map.csv",
+    "prepare_report.json",
+    "contact_sheet_*.png",
+    "assign*.csv",
+)
 
 
 def build_args(project_root: Path, out_dir: Path, name: str = APP_NAME) -> list[str]:

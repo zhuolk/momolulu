@@ -17,8 +17,8 @@ from PyQt5.QtWidgets import QApplication, QMenu
 import modules.health_reminder  # noqa: F401  导入即注册进 MODULE_CLASSES
 import modules.hourly_chime  # noqa: F401  导入即注册进 MODULE_CLASSES
 import modules.meal_reminder  # noqa: F401  导入即注册进 MODULE_CLASSES
-import modules.pomodoro  # noqa: F401  导入即把 Pomodoro 注册进 MODULE_CLASSES
 from modules.base import ModuleContext, build_modules
+from modules.pomodoro import FOCUS  # noqa: F401 - 导入即把 Pomodoro 注册进 MODULE_CLASSES
 from pet.autostart import default_command, set_enabled, sync
 from pet.behavior import PRIORITY_MODULE, STROLL, WANDER, Behavior
 from pet.catalog import load_categories, pick
@@ -159,6 +159,7 @@ class PetApp:
         self._autostart = sync(bool(self.config.get("autostart", False)), self._autostart_command)
         self._drag_active = False
         self._hidden_by_fullscreen = False
+        self._focus_playing = False
         self._shutdown_done = False
         self._wire_signals()
         self._start_ui()
@@ -185,6 +186,7 @@ class PetApp:
         self.sprite.play_finished.connect(self.behavior.on_play_finished)
         self.sprite.right_clicked.connect(self._on_right_clicked)
         self.sprite.moved.connect(self._follow_toast)
+        self.edge_hider.hidden_changed.connect(self._on_edge_hidden_changed)
         self.app.screenAdded.connect(self._on_screens_changed)
         self.app.screenRemoved.connect(self._on_screens_changed)
 
@@ -419,6 +421,15 @@ class PetApp:
         self._remember_position()
         self._save_timer.start()
 
+    def _on_edge_hidden_changed(self, hidden: bool) -> None:
+        """从贴边隐藏里重新露面时播一次 `showup`（缩回时 `hidden=True`，不播）。"""
+        if not hidden:
+            self.behavior.play_showup()
+
+    def _play_showup(self) -> None:
+        """启动后第一次露面：播一次 `showup`（随后由行为机接一个 `surprise`）。"""
+        self.behavior.play_showup()
+
     # ------------------------------------------------------------ 实用模块
 
     def _init_modules(self) -> None:
@@ -455,6 +466,21 @@ class PetApp:
         for module in self.modules.values():
             if module.enabled:
                 module.tick(now)
+        self._sync_focus_mood()
+
+    def _sync_focus_mood(self) -> None:
+        """番茄钟专注期间让噜噜一直「思考」（待机素材换成 `think`），退出专注再换回来。"""
+        pomodoro = self.modules.get("pomodoro")
+        focusing = bool(
+            pomodoro is not None
+            and pomodoro.enabled
+            and pomodoro.running
+            and pomodoro.phase == FOCUS
+        )
+        if focusing == self._focus_playing:
+            return
+        self._focus_playing = focusing
+        self.behavior.set_idle_category("think" if focusing else "idle")
 
     # ------------------------------------------------------------ 自动更新
 
@@ -571,6 +597,8 @@ class PetApp:
         self.edge_hider.restore_from_config()
         self._tick_timer.start()
         self._fs_timer.start()
+        if not self.edge_hider.is_hidden:  # 直接以贴边隐藏形态启动时不算「露面」
+            self._play_showup()
         if pick(self.catalog, "idle", self.processed_dir) is None:
             print("assets/processed 为空，请先运行 tools_cli/prepare.py")
 
@@ -624,6 +652,7 @@ class PetApp:
             (self.sprite.play_finished, self.behavior.on_play_finished),
             (self.sprite.right_clicked, self._on_right_clicked),
             (self.sprite.moved, self._follow_toast),
+            (self.edge_hider.hidden_changed, self._on_edge_hidden_changed),
             (self.app.screenAdded, self._on_screens_changed),
             (self.app.screenRemoved, self._on_screens_changed),
         ):

@@ -3,9 +3,9 @@ from pathlib import Path
 
 from PIL import Image
 from PyQt5.QtCore import QEvent, QPoint, Qt
-from PyQt5.QtGui import QMouseEvent, QPixmap
+from PyQt5.QtGui import QMouseEvent, QMovie, QPixmap
 
-from pet.catalog import add_unassigned, default_categories
+from pet.catalog import add_unassigned, default_categories, set_loop
 from pet.config import DEFAULTS
 from pet.sprite import Sprite, placeholder_pixmap, render_frame
 
@@ -15,12 +15,14 @@ def make_gif(path: Path, frames=4, size=(320, 320)):
     imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=100, loop=0)
 
 
-def catalog_with(tmp_path, names=("lulu_001.gif",), track="transparent", category="idle"):
+def catalog_with(tmp_path, names=("lulu_001.gif",), track="transparent", category="idle", loops=None):
     d = default_categories()
     for n in names:
         make_gif(tmp_path / n)
     d["categories"][category]["files"] = list(names)
     add_unassigned(d, list(names), {n: track for n in names})
+    for name, loopable in (loops or {}).items():
+        set_loop(d, name, loopable)
     return d
 
 
@@ -50,6 +52,49 @@ def test_play_missing_assets_returns_false_and_shows_placeholder(qapp, tmp_path)
 
 def test_play_existing_asset_returns_true(qapp, tmp_path):
     assert Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS).play("idle") is True
+
+
+def test_loopable_asset_repeats_forever_and_never_reports_finished(qapp, tmp_path):
+    """可循环素材一直播下去，不会报「播完」（谁也不能把它变成只播一次）。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    reported = []
+    s.play_finished.connect(reported.append)
+
+    assert s.play("idle") is True
+    assert s.current_movie().loopCount == -1
+    s.current_movie().finished.emit()
+    assert reported == []
+
+
+def test_single_shot_asset_plays_once_and_reports_finished(qapp, tmp_path):
+    """标了「只播一次」的素材播完最后一帧就停，并报出分类名。"""
+    s = Sprite(catalog_with(tmp_path, loops={"lulu_001.gif": False}), tmp_path, DEFAULTS)
+    reported = []
+    s.play_finished.connect(reported.append)
+
+    assert s.play("idle") is True
+    assert s.current_movie().loopCount == 1
+    s.current_movie().finished.emit()
+    assert reported == ["idle"]
+
+
+def test_single_shot_asset_restarts_when_played_again(qapp, tmp_path):
+    """播完的只播一次素材再被请求时必须从头再播，否则画面死在末帧。"""
+    s = Sprite(catalog_with(tmp_path, loops={"lulu_001.gif": False}), tmp_path, DEFAULTS)
+    s.play("idle")
+    s.current_movie().stop()  # 模拟播完最后一帧后 QMovie 自行停下
+
+    assert s.play("idle") is True
+    assert s.current_movie().state() == QMovie.Running
+
+
+def test_playing_the_same_asset_does_not_restart_it(qapp, tmp_path):
+    """同一素材重复请求不能被当成重播：循环动画会一次次跳回第一帧。"""
+    s = Sprite(catalog_with(tmp_path), tmp_path, DEFAULTS)
+    s.play("idle")
+    movie = s.current_movie()
+    s.play("idle")
+    assert s.current_movie() is movie and movie.state() == QMovie.Running
 
 
 def test_movie_cache_bounded_and_switches_assets(qapp, tmp_path):

@@ -25,7 +25,7 @@ from PyQt5.QtGui import (
 )
 from PyQt5.QtWidgets import QWidget
 
-from pet.catalog import pick, track_of
+from pet.catalog import loops_of, pick, track_of
 from pet.config import get
 
 CARD_RADIUS = 16
@@ -204,6 +204,10 @@ class Sprite(QWidget):
     def current_frame_pixmap(self) -> QPixmap | None:
         return self._current_pixmap
 
+    def current_movie(self) -> QMovie | None:
+        """当前正在播的影片（循环设置等由它承载）。"""
+        return self._current_movie
+
     @property
     def strip_side(self) -> str | None:
         """贴边缩回时屏幕内那一侧（`"left"` / `"right"`），正常显示时为 `None`。"""
@@ -294,11 +298,14 @@ class Sprite(QWidget):
             return QPixmap.fromImage(image)
         return render_frame(_qimage_to_pil(image), "card")
 
-    def play(self, category: str, once: bool = False) -> bool:
+    def play(self, category: str) -> bool:
         """按分类挑一个素材播放；素材缺失时显示占位图并返回 False。
 
         `self._track` 只用来表达「偏好哪条轨道」；渲染始终按被选中素材的实测轨道，
         这样偏好透明素材但只挑到卡片素材时，仍会套上圆角卡片而不是露出方形背景。
+
+        循环与否由**素材自身**的 `loops` 属性决定，不理会调用方想要什么：可循环的素材
+        一直播下去，标了「只能播一次」的素材播完最后一帧就停下并发 `play_finished`。
         """
         wanted = None if self._track in (None, "auto") else self._track
         path = pick(self._catalog, category, self._processed_dir, track=wanted)
@@ -318,19 +325,24 @@ class Sprite(QWidget):
             self.asset_missing.emit()
             return False
 
+        loopable = loops_of(self._catalog, path.name)
+        movie.loopCount = -1 if loopable else 1  # PyQt 里 loopCount 是属性；-1 = 一直循环
+        try:
+            movie.finished.disconnect()  # 同一影片会被反复复用，避免回调累积
+        except TypeError:
+            pass
+        if not loopable:
+            movie.finished.connect(lambda cat=category: self.play_finished.emit(cat))
+
         if movie is not self._current_movie:
             if self._current_movie is not None:
                 self._current_movie.stop()
             self._current_movie = movie
             movie.start()
+        elif movie.state() == QMovie.NotRunning:  # 只播一次的素材已播完：从头再播
+            movie.start()
         self._current_category = category
         self._on_frame_changed()
-        if once:
-            try:
-                movie.finished.disconnect()
-            except TypeError:
-                pass
-            movie.finished.connect(lambda cat=category: self.play_finished.emit(cat))
         return True
 
     def set_track(self, track: str | None) -> None:
@@ -358,7 +370,7 @@ class Sprite(QWidget):
         category = self._current_category
         self.release_movies()
         if category is not None:
-            self.play(category, once=False)
+            self.play(category)
 
     def set_always_on_top(self, on: bool) -> None:
         """切换「始终置顶」。"""

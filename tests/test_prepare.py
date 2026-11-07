@@ -38,6 +38,7 @@ def test_run_prepare_processes_and_registers_unassigned(tmp_path):
     d = load_categories(cats)
     assert sorted(d["categories"]["unassigned"]["files"]) == ["lulu_001.gif", "lulu_002.gif"]
     assert d["categories"]["unassigned"]["track"] == "transparent"
+    assert d["loops"] == {"lulu_001.gif": True, "lulu_002.gif": True}  # 新素材默认可循环
 
 
 def test_run_prepare_skips_content_duplicates(tmp_path):

@@ -21,7 +21,7 @@ from pathlib import Path
 if __package__ in (None, ""):  # 允许 `python tools_cli/prepare.py` 直接运行
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pet.catalog import add_unassigned, load_categories, save_categories  # noqa: E402
+from pet.catalog import add_unassigned, load_categories, save_categories, set_loop  # noqa: E402
 from tools_cli.gif_pipeline import (  # noqa: E402
     COLORS,
     EDGE_MIN,
@@ -212,6 +212,8 @@ def run_prepare(
 
     if names:
         add_unassigned(categories, names, tracks)
+        for name in names:  # 新素材默认可循环，要「只播一次」就去 categories.json 里改
+            set_loop(categories, name, True)
         save_categories(categories_path, categories)
     save_index(index_path, index)
 

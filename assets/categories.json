@@ -1,86 +1,149 @@
 {
-  "version": 2,
+  "version": 3,
   "categories": {
     "idle": {
       "files": [
-        "lulu_004.gif",
-        "lulu_008.gif",
-        "lulu_010.gif"
+        "lulu_002.gif",
+        "lulu_009.gif",
+        "lulu_010.gif",
+        "lulu_018.gif",
+        "lulu_023.gif",
+        "lulu_025.gif"
       ],
       "track": "auto"
     },
     "walk": {
       "files": [
-        "lulu_007.gif"
+        "lulu_006.gif",
+        "lulu_014.gif",
+        "lulu_026.gif"
       ],
-      "track": "card"
+      "track": "auto"
     },
     "stroll": {
-      "files": [
-        "lulu_012.gif"
-      ],
-      "track": "transparent"
+      "files": [],
+      "track": "auto"
     },
     "sleep": {
-      "files": [
-        "lulu_006.gif"
-      ],
-      "track": "card"
+      "files": [],
+      "track": "auto"
     },
     "eat": {
-      "files": [
-        "lulu_003.gif"
-      ],
-      "track": "card"
+      "files": [],
+      "track": "auto"
     },
     "drink": {
       "files": [
-        "lulu_003.gif"
+        "lulu_017.gif"
       ],
-      "track": "card"
+      "track": "auto"
     },
     "happy": {
       "files": [
-        "lulu_009.gif",
-        "lulu_011.gif"
+        "lulu_008.gif",
+        "lulu_012.gif",
+        "lulu_021.gif"
       ],
-      "track": "transparent"
+      "track": "auto"
     },
     "angry": {
       "files": [
-        "lulu_002.gif"
+        "lulu_016.gif",
+        "lulu_020.gif",
+        "lulu_022.gif"
       ],
-      "track": "transparent"
+      "track": "auto"
     },
     "sad": {
-      "files": [
-        "lulu_001.gif"
-      ],
-      "track": "transparent"
+      "files": [],
+      "track": "auto"
     },
     "bath": {
+      "files": [],
+      "track": "auto"
+    },
+    "showup": {
+      "files": [
+        "lulu_001.gif",
+        "lulu_013.gif"
+      ],
+      "track": "auto"
+    },
+    "awake": {
+      "files": [
+        "lulu_007.gif",
+        "lulu_011.gif"
+      ],
+      "track": "auto"
+    },
+    "move": {
+      "files": [
+        "lulu_019.gif"
+      ],
+      "track": "auto"
+    },
+    "think": {
+      "files": [
+        "lulu_015.gif"
+      ],
+      "track": "auto"
+    },
+    "sport": {
+      "files": [
+        "lulu_004.gif"
+      ],
+      "track": "auto"
+    },
+    "cry": {
       "files": [
         "lulu_005.gif"
       ],
-      "track": "card"
+      "track": "auto"
+    },
+    "anxious": {
+      "files": [
+        "lulu_003.gif"
+      ],
+      "track": "auto"
+    },
+    "surprise": {
+      "files": [
+        "lulu_024.gif"
+      ],
+      "track": "auto"
     },
     "unassigned": {
       "files": [],
       "track": "auto"
     }
   },
-  "tracks": {
-    "lulu_001.gif": "transparent",
-    "lulu_002.gif": "transparent",
-    "lulu_003.gif": "card",
-    "lulu_004.gif": "transparent",
-    "lulu_005.gif": "card",
-    "lulu_006.gif": "card",
-    "lulu_007.gif": "card",
-    "lulu_008.gif": "card",
-    "lulu_009.gif": "transparent",
-    "lulu_010.gif": "transparent",
-    "lulu_011.gif": "transparent",
-    "lulu_012.gif": "transparent"
+  "tracks": {},
+  "loops": {
+    "lulu_001.gif": false,
+    "lulu_002.gif": true,
+    "lulu_003.gif": true,
+    "lulu_004.gif": true,
+    "lulu_005.gif": false,
+    "lulu_006.gif": false,
+    "lulu_007.gif": false,
+    "lulu_008.gif": true,
+    "lulu_009.gif": true,
+    "lulu_010.gif": true,
+    "lulu_011.gif": true,
+    "lulu_012.gif": true,
+    "lulu_013.gif": false,
+    "lulu_014.gif": true,
+    "lulu_015.gif": true,
+    "lulu_016.gif": false,
+    "lulu_017.gif": true,
+    "lulu_018.gif": true,
+    "lulu_019.gif": true,
+    "lulu_020.gif": true,
+    "lulu_021.gif": true,
+    "lulu_022.gif": true,
+    "lulu_023.gif": true,
+    "lulu_024.gif": true,
+    "lulu_025.gif": true,
+    "lulu_026.gif": true
   }
 }

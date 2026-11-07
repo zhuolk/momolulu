@@ -1,5 +1,6 @@
 """整体冒烟：`PetApp` 能在离屏环境下正常启动、驱动模块、退出，且不留残留。"""
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PIL import Image
@@ -125,6 +126,41 @@ def test_stroll_from_menu_walks_along_work_area_edge(qapp, tmp_path):
     app._on_tick()  # 走一帧：沿工作区右边向上
     assert app.sprite.x() == area.x() + area.width() - app.sprite.width()
     assert app.sprite.y() == area.y() + area.height() - app.sprite.height() - STROLL_SPEED_PX
+    app.shutdown()
+
+
+def test_leaving_edge_hide_plays_showup_again(qapp, tmp_path):
+    """从贴边隐藏里露面时再播一次 `showup`；缩回桔子条不算露面。"""
+    app = PetApp(root=build_root(tmp_path))
+    calls = []
+    app.behavior.play_showup = lambda: calls.append(True) or True
+
+    app.edge_hider.maybe_hide((4, 400))
+    assert calls == []
+
+    geo = QApplication.primaryScreen().geometry()
+    centre = (geo.x() + geo.width() // 2, geo.y() + geo.height() // 2)
+    app.edge_hider.maybe_hide(centre)
+    assert calls == [True]
+    app.shutdown()
+
+
+def test_pomodoro_focus_switches_the_idle_asset_to_think(qapp, tmp_path):
+    """番茄钟专注期间待机素材换成 `think`，退出专注再换回 `idle`。"""
+    app = PetApp(root=build_root(tmp_path))
+    app.behavior.tick(datetime.now() + timedelta(seconds=9))  # 让启动时的 `showup` 收尾
+    assert app.behavior.state == "IDLE"
+
+    pomodoro = app.modules["pomodoro"]
+    pomodoro.set_enabled(True)
+    pomodoro.toggle()  # 待机 → 开始专注
+
+    app._on_module_tick()
+    assert app.behavior.state == "THINK"
+
+    pomodoro.reset()
+    app._on_module_tick()
+    assert app.behavior.state == "IDLE"
     app.shutdown()
 
 

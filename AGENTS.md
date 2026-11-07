@@ -21,10 +21,13 @@
   对这些文件改名 / 搬移 / 删除可能偶发 `WinError 5 拒绝访问`。**先重试**，不要当逻辑 bug。
 - 装包走内网代理：
   `python -m pip install --proxy http://127.0.0.1:8888 --index-url https://pypi.org/simple <pkg>`
+- **在编辑器里打开着的文件可能被独占**：此时改文件会只落在编辑器缓冲里（工具层报成功、**磁盘没变**），
+  写盘直接改还会吃 `WinError 32`。改完关键文件（尤其 `assets/*.json`、`*.csv`）后用 shell 复读一次校验；
+  被占住就请用户关掉那个程序（本机在 `assets/assign.csv` 上踩过）。
 
 ## 测试
 
-- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **280** 个用例）。
+- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **317** 个用例）。
 - 本机 **不打印 `N passed` 汇总行**，判断全绿看**退出码是否为 0**；
   用例数用 `--collect-only -q -p no:cacheprovider` 逐文件求和交叉确认。
 - 加 `-p no:cacheprovider` 避免在仓库留下 `.pytest_cache`。
@@ -36,7 +39,16 @@
   计入 `report["failed"]` 并让 `prepare.py` 退出码为 1。这是刻意的硬门槛，**不要加卡片轨兜底或静默出片**。
 - 去背实现（`sample_background` / `remove_background` / `analyze_frame` / `grade` 等）保留在
   `tools_cli/gif_pipeline.py` 且有单测，但**已无调用方**；`--tol` / `--edge-min` 保留但不再生效。
-- 命名必须 `lulu_xxx.gif`；同图按 md5 去重；手动删图后要同步清理 `categories.json` 与 `.index.json`。
+- 命名必须 `lulu_xxx.gif`；同图按 md5 去重；**删图后必须跑 `python tools_cli/assign.py --prune`**
+  清掉 `categories.json` 与 `.index.json` 里的悬空引用（不清理 `.index.json` 会让同一张图重放时被去重跳过）。
+- **分类与循环打标走 `tools_cli/assign.py`**：清单是 CSV `file,category,loop`，可一张图写多行归多类；
+  清单里点名的素材先摘出原分类再归位，没点名的不动。**不要在 `categories.json` 里手工挪文件名**。
+- **是否可循环是素材属性**：`categories.json` 的 `loops`（文件名 → bool）决定素材循环还是只播一次，
+  缺省视为可循环。`Sprite.play()` 只认素材属性，**不提供「强制播一次」的调用入口**；
+  改循环行为要改素材属性，不要在调用方加特判。
+- **分类清单以 `pet/catalog.py` 的 `CATEGORIES` 为准**（`loops`/分类真相是 `categories.json`）：
+  加分类要同时补 `FALLBACK` 回退链、`assets/categories.json`（`default_categories()` 会补齐）与触发点，
+  并记得**行为机 / 模块 / `main.py` 的触发点要一起接**，再补测试（`tests/test_catalog.py` 有回退链断言）。
 - `prepare.py --rebuild` 会从 1 重新编号导致既有分类错位，**不要随意使用**。
 
 ## 提交与发版

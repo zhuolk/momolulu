@@ -37,19 +37,19 @@ def test_water_fires_after_interval_and_not_again(qapp):
 def test_sit_fires_independently_with_its_own_interval(qapp):
     m, notes, clock, _ = make(water=45, sit=60)
     clock.adv(minutes=60); m.tick(clock())
-    assert ("起来动一动吧", "happy") in notes and ("该喝水啦", "drink") in notes
+    assert ("起来动一动吧", "sport") in notes and ("该喝水啦", "drink") in notes
 
 
 def test_water_sub_switch_off_silences_only_water(qapp):
     m, notes, clock, _ = make(water_on=False, sit_on=True)
     clock.adv(minutes=90); m.tick(clock())
-    assert ("该喝水啦", "drink") not in notes and ("起来动一动吧", "happy") in notes
+    assert ("该喝水啦", "drink") not in notes and ("起来动一动吧", "sport") in notes
 
 
 def test_sit_sub_switch_off_silences_only_sit(qapp):
     m, notes, clock, _ = make(water_on=True, sit_on=False)
     clock.adv(minutes=90); m.tick(clock())
-    assert ("起来动一动吧", "happy") not in notes and ("该喝水啦", "drink") in notes
+    assert ("起来动一动吧", "sport") not in notes and ("该喝水啦", "drink") in notes
 
 
 def test_snooze_postpones_next_reminder(qapp):

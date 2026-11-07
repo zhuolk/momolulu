@@ -11,9 +11,26 @@
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
 - 当前版本：`0.2.4`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：280 个 pytest 用例全量通过
+- 测试：317 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
+
+## 当前进度（本机工作树，**尚未提交**）
+
+仓库最后一次提交是 `7098c8f`（发布 `0.2.4`）。之后在本地攒了一批改动，**都还没 commit / push**——
+换电脑继续前先提交推送，否则这些改动不会跟着仓库走：
+
+- **素材整批替换**：`assets/processed/` 现在是新的 26 张（`lulu_001~026.gif`）：`001~012` 是就地换成新图，
+  `013~026` 是新增。`assets/categories.json` 随之重写（归属 + `loops`，其中 6 张 `false`）。
+- **新增素材工具** `tools_cli/assign.py`（按 CSV 清单批量归位分类 + 打循环标 + `--prune` 清悬空引用）
+  与单测 `tests/test_assign.py`；`.gitignore` 与 `build.py` 的 `_DEV_ONLY` 都已排除 `assign*.csv`。
+  `prepare.py` 登记新素材时改为默认写 `loops: true`。
+- **分类 10 → 18**：新增 `showup` `awake` `move` `think` `sport` `cry` `anxious` `surprise`
+  与 5 条语义回退链（`pet/catalog.py`），触发点接在 `pet/behavior.py`、`main.py`、
+  `modules/health_reminder.py`（详见「架构要点」）。
+- **测试 308 → 317**，全绿（退出码 0）。
+- 素材清单 `assets/assign.csv` **不入库**（开发期输入），新机器上没有它；真相始终是
+  `assets/categories.json`，要重新出一份清单跑 `python tools_cli/assign.py --template assets/assign.csv`。
 
 ## 环境
 
@@ -59,13 +76,14 @@ ui/                   托盘菜单、设置对话框、气泡提示 toast、更�
   update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
   prepare.py          素材预处理：编号 / md5 去重 / 分类登记（不再去背，见「素材规范」）
+  assign.py           素材整理：按 CSV 清单批量归位分类 + 打循环标，并清理悬空引用
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                280 个用例（pytest，conftest 里提供 qapp fixture）
-assets/               素材（外置，不打进 exe）
+tests/                317 个用例（pytest，conftest 里提供 qapp fixture）
+assets/               素材（外置，不打进 exe，当前 26 张 `processed/lulu_001~026.gif`）
 update/latest.json    自动更新清单（**发布源，必须入库**）
-docs/                 本文件 + superpowers 下的 spec / plan
+docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词）+ superpowers 下的 spec / plan
 ```
 
 ## 架构要点
@@ -75,12 +93,28 @@ docs/                 本文件 + superpowers 下的 spec / plan
 - **GIF 双轨渲染**：素材分 `transparent`（已去背，直接画在桌面上）与 `card`（带背景，
   走圆角卡片渲染）两轨。轨道实测记录在 `assets/categories.json` 的 `tracks` 字段，
   `Sprite.play()` 按**被选中素材的实测轨道**渲染（不要按分类固定轨道）。
-  **新素材一律要求预先去背**，管线不再去背，所以 `card` 轨现在只服务早期那 5 张历史素材，
-  渲染分支要留着。
+  **新素材一律要求预先去背**，管线不再去背，所以现在 26 张全是透明轨（`tracks` 为空即按
+  `auto` 处理，渲染走透明分支）；`card` 轨目前没有素材在用，渲染分支要留着。
+- **是否可循环由素材说了算**：`assets/categories.json` 的 `loops` 字段（文件名 → bool）记录每张素材
+  是否可循环，缺省或非布尔值一律当**可循环**（兼容 0.2.4 及更早的 json）。
+  `Sprite.play(category)` 只按**被选中素材**的属性设 `QMovie.loopCount`（`-1` 一直播、`1` 播一次），
+  **不接受调用方干预**——可循环的素材永远循环。标了「只播一次」的素材播完发 `play_finished`，
+  由 `Behavior.on_play_finished()` 收尾：普通状态回待机、`idle` 接着挑下一张待机素材
+  （避免画面死在末帧）、`stroll` 忽略（一圈走完由 `on_stroll_finished` 收尾，不能半路停下）、
+  分类已被别的高优先级状态顶掉时忽略。
+  注意 PyQt5 里 `loopCount` 是**属性不是 setter**，要写 `movie.loopCount = -1`。
 - **行为状态机** `pet/behavior.py`：`idle` 空闲一段时间后随机触发小动作，
-  `_AUTO_ACTIONS = ("walk", "sad", "bath")` 等概率三选一。
-  状态常量 `IDLE` / `DRAGGED` / `WANDER` / `STROLL`，分类到状态的映射见 `_STATE_NAMES`
-  （默认取分类名大写，`walk → WANDER`、`stroll → STROLL` 是特例）。
+  `_AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")` 等概率六选一。
+  状态常量 `IDLE` / `DRAGGED` / `WANDER` / `STROLL` / `AWAKE`，分类到状态的映射见 `_STATE_NAMES`
+  （默认取分类名大写，`walk → WANDER`、`stroll → STROLL` 是特例）。几个「插播式」触发点：
+  - `showup`：启动后首次露面（`main._start_ui`）与从贴边隐藏恢复（`_on_edge_hidden_changed`）
+    各播一次，播完再补一个 `surprise` 然后回待机。它只占 `auto` 级，不挡用户点击 / 模块通知。
+  - `awake`：睡觉中被任何请求打断时插播一次（`request()` 检测到从 `sleep` 出来，
+    `_to_idle()` 那条路走同一个入口），最多 8s 后回待机（可循环素材也靠这个计时兜底）。
+  - `think`：番茄钟专注期间 `main._sync_focus_mood()` 用 `set_idle_category("think")` 把待机素材
+    换掉，退出专注换回 `idle`；待机态没结束时会自愈（`_to_idle()` 用的就是当前 `_idle_category`）。
+  - `move`：拖拽时播（`on_drag_started`）；没这个分类的素材则定格当前一帧。
+  - `sport`：久坐提醒触发时播（`modules/health_reminder.py` 的 SIT 表情分类）。
 - **贴边隐藏** `pet/edge_hide.py`：拖到屏幕左右边缘松手即缩进屏幕外，只露 **24px** 桔子窄条
   （`DEFAULT_EDGE_PX = DEFAULT_STRIP_PX = 24`）；
   **只有把桔子拖离边缘并松手才恢复显示**，鼠标划过 / 悬停都不唤醒。状态持久化到 `config.json` 的 `pet.edge_hide`。
@@ -125,20 +159,39 @@ docs/                 本文件 + superpowers 下的 spec / plan
 - 账本文件：
   - `assets/.index.json`：md5 → {name, track}
   - `assets/id_map.csv`：id / raw / track 对照表（目前 `prepare.py` 已不生成，仅历史遗留）
-  - `assets/categories.json`：分类结构与每张图的实测轨道
-- 分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `unassigned`。
-  当前共 12 张：`idle` 3 张、`happy` 2 张，`walk` / `stroll` / `sleep` / `drink` / `angry` / `sad` / `bath`
-  各 1 张（`eat` 暂无素材），`unassigned` 为空。12 张里 7 张 `transparent`、5 张 `card`（历史素材）。
+  - `assets/categories.json`：分类结构、每张图的实测轨道与是否可循环（`loops` 字段，缺省视为可循环）
+- 分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `showup` `awake`
+  `move` `think` `sport` `cry` `anxious` `surprise`（18 个）＋ `unassigned`。
+  缺素材时按语义就近降级再落 `idle`，最后才到 `unassigned`（见 `catalog.FALLBACK`）：
+  `cry→sad`、`move→walk`、`anxious→angry`、`surprise→happy`、`drink→eat`，其余同名 → `idle`。
+- 当前共 **26 张**（`assets/processed/lulu_001~026.gif`）：`idle` 6、`happy` 3、`walk` 3、`angry` 3、
+  `showup` 2、`awake` 2，`drink` / `move` / `think` / `sport` / `cry` / `anxious` / `surprise` 各 1；
+  `stroll` / `sleep` / `eat` / `sad` / `bath` 暂无素材（靠回退链顶替），`unassigned` 为空。
+  标了「只播一次」的 6 张：`lulu_001` `005` `006` `007` `013` `016`。
+  `tracks` 字段目前是空的（`track_of()` 一律返回 `auto`，渲染走透明分支），实测 26 张都自带 alpha。
 - 默认参数：`TOL=32`、`EDGE_MIN=0.70`、`MAX_SIDE=200`、`MAX_FPS=10`、`COLORS=96`、`MAX_BYTES=300KB`。
   高帧率 / 高分辨率素材要显式放宽，例如散步那张用的是
   `--max-side 240 --fps 20 --max-kb 500`（240×240、34 帧、394KB），
   用默认档会被抽帧到明显卡顿。
 - 标准流程：**去好背的** GIF 放入 `raw/` → `python tools_cli/prepare.py [放宽参数]`
-  → `python tools_cli/contact_sheet.py`（人工看图分类）→ 手工把文件名从 `unassigned` 挪到目标分类
+  → `python tools_cli/contact_sheet.py`（人工看图分类）→ 用 `assign.py` 按清单归位分类与循环标
   → `python tools_cli/build.py`。
+- **批量整理用 `assign.py`**（`tools_cli/assign.py`），别在 `categories.json` 里手数文件名：
+  - `python tools_cli/assign.py --template assets/assign.csv` 生成待填清单（列出现有素材的归属与循环标记）；
+  - 清单是带表头的 CSV `file,category,loop`，一张图想挂多分类就写多行（如吃 / 喝共用一张）；
+    `loop` 留空表示不改动；
+  - `python tools_cli/assign.py assets/assign.csv` 落盘。**清单里出现过的文件会先摘出原分类再归位**，
+    没点名的文件原样不动；未知分类、`processed/` 里不存在的文件名会跳过并点名，退出码 1。
+  - 清单是开发期输入（`.gitignore` + `build.py` 的 `_DEV_ONLY` 都已排除），真相始终是 `categories.json`。
+- **删素材只需删文件**，再跑 `python tools_cli/assign.py --prune`：它会把 `categories.json` 的
+  分类归属 / `tracks` / `loops` 与 `.index.json` 里指向已删文件的条目一并摘掉。
+  不清理 `.index.json` 的话，以后重新放回**同一张图**会被 md5 去重当成重复而跳过。
+- **可循环**：`prepare.py` 登记新素材时默认在 `categories.json` 的 `loops` 里写 `true`。
+  要某张图只能播一次，用 `assign.py` 的清单把 `loop` 写成 `false` 即可（`categories.json` 走素材热更
+  静默下发，但用户端生效需要程序重新读一次清单）。
 - 坑：
   - `prepare.py --rebuild` 会从 1 重新编号，会让既有分类错位，**不要随意使用**。
-  - 手动删素材后必须同步清理 `categories.json` 与 `.index.json`，否则出现悬空引用。
+  - 手动删素材后跑一次 `assign.py --prune` 清理悬空引用（见上），别只删文件不管账本。
   - `catalog.existing_files()` 会过滤磁盘上不存在的文件名，所以删图即刻生效。
   - **`processed/` 里素材尺寸并不统一**（现有 155×155、200×200、240×240 三种）。窗口尺寸 =
     素材尺寸 × `pet.scale`，所以换分类 / 散步时噜噜体型会跳变。管线里**没有**「统一画布」这一步，
@@ -148,10 +201,12 @@ docs/                 本文件 + superpowers 下的 spec / plan
 
 ```powershell
 cd capybara_pet
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 280 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 317 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
+python tools_cli/assign.py --template assets/assign.csv   # 生成待填清单（分类 + 循环标记）
+python tools_cli/assign.py assets/assign.csv --prune      # 按清单落盘，并清掉悬空引用
 ```
 
 ## 已确认的产品行为
@@ -165,12 +220,19 @@ python tools_cli/contact_sheet.py         # 生成预览接触表
 - **绕屏散步**：右键菜单「搞搞震 ▸ 散步」触发。噜噜先瞬移到当前屏右下角，再沿**工作区**边缘
   逆时针走一圈（约 80px/s），四个拐角各逆时针转 90° 保持脚贴边，走完落回待机；
   中途拖拽即中止散步。底边那段踩在任务栏上沿，不会走进任务栏区域。
+- **素材可循环属性**：每张素材在 `categories.json` 的 `loops` 里标「是否可循环」。可循环的素材
+  **永远循环**（调用方无法要求它只播一次）；标成「只播一次」的素材播完最后一帧就停下回待机
+  （`idle` 则接着挑下一张待机图继续播，不会死在末帧；散步途中不截断，由一圈走完统一收尾）。
+  新素材默认 `true`。当前 26 张里有 6 张是 `false`。
+- **新表情的触发时机**：启动 / 从贴边隐藏恢复播 `showup`（随后补一个 `surprise`）；
+  睡觉被叫醒先播 `awake`；番茄钟专注期间待机素材换成 `think`；久坐提醒触发时播 `sport`；
+  拖拽时播 `move`（没有该素材则定格当前帧）；`cry` / `anxious` / `surprise` 也进了待机随机小动作池。
 - **提醒模块默认值**：`pomodoro` 关、`health_reminder` 开（喝水 45min / 久坐 60min）、
   `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关。
 
 ## 待办 / 未决
 
-1. 待机小动作中 `walk` 是否加权（目前 walk / sad / bath 等概率）。
+1. 待机小动作是否加权（目前 `walk` / `sad` / `bath` / `cry` / `anxious` / `surprise` 等概率六选一）。
 2. `docs/superpowers/` 下 **2026-10-20 那份 spec / plan 是改名前的旧描述**（`lulu_pet`、
    悬停滑出 + 3s 缩回、48px 桔子条、双击打开设置），**尚未回写**，读的时候注意甄别；
    2026-10-21 那份（`2026-10-21-auto-update*`）是自动更新这一版，与代码一致。
@@ -182,8 +244,12 @@ python tools_cli/contact_sheet.py         # 生成预览接触表
    - 主程序更新：`info["package"]` 存在时**弹窗**征求同意，才下载整包自替换。
 6. `.gitignore` 覆盖 `dist/`、`*.spec`、`config.json`、`momolulu.log`、`.superpowers/`、
    `assets/raw/`、`.index.json`、`id_map.csv`、`prepare_report.json`、`contact_sheet_*.png`、
-   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 12 张图与 `categories.json`；
+   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 26 张图与 `categories.json`；
    完整素材链路（`raw/` 采集件与账本）需要另外传输。
+7. 睡着时被点击 / 提醒打断，只会播 `awake`，被打断的那个表情（如喝水 / 开心）不播——当前是
+   「插播式覆盖」。要「醒觉播完再接原表情」得给行为机加个待播队列，产品上还没定。
+8. `categories.json` 的 `tracks` 是空的（素材改名那轮重置的遗留）：26 张实测都自带 alpha，
+   `track_of()` 返回 `auto`、渲染走透明分支，画面正确；若将来要按目录记实测轨道，得重跑一次素材管线。
 
 ## 在另一台电脑继续
 
@@ -192,10 +258,15 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 280 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 317 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。
+想省事就直接把 [`docs/handoff-prompt.md`](handoff-prompt.md) 里「## 提示词」一节整段贴进新会话
+（它已把「先读哪些文件 / 怎么验收 / 哪些不许擅自做」写好，只在末尾补一句本轮要做什么）。
+
+以上假定「当前进度」那批改动**已经提交并推送**。还没提交的话，新机器 clone 到的是 `0.2.4` 的旧代码：
+测试期望值仍是 308 项、素材还是旧的 12 张、`assign.py` 与 8 个新分类都不存在。
 
 注意：**Trae 的对话历史不在仓库里**——它由客户端 / 云端账号管理，本机没有可搬运的会话文件
 （已确认 `%APPDATA%\Trae\User\workspaceStorage\` 下没有 chatSessions 之类的记录）。

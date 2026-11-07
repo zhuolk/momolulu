@@ -11,7 +11,11 @@
 ## 特性
 
 - **GIF 动画挂件**：透明无边框、置顶，播放 `assets/processed/` 里的动图。
-- **行为状态机**：待机一段时间后随机触发小动作（走路 / 难过 / 洗澡），带优先级抢占。
+- **行为状态机**：待机一段时间后随机触发小动作（走路 / 难过 / 洗澡 / 哭 / 焦虑 / 惊喜，等概率六选一），
+  带优先级抢占（用户点击 > 模块提醒 > 待机小动作）。
+- **表情细节**：启动后首次露面、以及从贴边隐藏里恢复时露一次脸（`showup`，紧接着补一个 `surprise`）；
+  睡觉被叫醒先演一次 `awake` 再回神；番茄钟专注期间一直「思考」（待机素材换成 `think`）；
+  久坐提醒触发时动一动（`sport`）；拖拽时是 `move`（没这个素材就定格当前一帧）。
 - **自主走动**：待机久了会在桌面上慢慢走（约 40px/s），碰到屏幕边缘折返并转身。
 - **绕屏散步**（右键「搞搞震 ▸ 散步」）：先瞬移到屏幕右下角，再沿屏幕边缘逆时针走一圈，
   四角各逆时针转 90° 保持脚贴边，走完落回待机，中途拖拽即中止。贴着**任务栏上沿**走，
@@ -63,7 +67,9 @@ python main.py
 素材与程序分离，放在与 exe 平级的 `assets/` 目录，替换素材无需改代码（改完仍需重新打包才分发）：
 
 - `assets/processed/`：桌宠实际引用的动图，命名必须为 `lulu_xxx.gif`。
-- `assets/categories.json`：分类结构与每张图的实测轨道。
+- `assets/categories.json`：分类结构、每张图的实测轨道与是否可循环。每张素材带一个
+  **是否可循环**属性（`loops` 字段）：可循环的一直播，标成「只播一次」的播完最后一帧就回待机。
+  缺省（或旧版没有这字段）一律按可循环处理。
 - `assets/raw/`：原始采集件（不入库）。
 
 **素材必须提前去好背（自带 alpha）**：处理管线不再做去背，拿到没有 alpha 的素材会直接报错。
@@ -74,16 +80,26 @@ python main.py
 # 1. 去好背的 GIF 放入 assets/raw/
 python tools_cli/prepare.py            # 编号 / md5 去重 / 分类登记（高帧率素材需放宽参数）
 python tools_cli/contact_sheet.py      # 生成预览接触表，人工看图
-# 2. 手工把文件名从 unassigned 挪到目标分类
+# 2. 生成待填清单，填好每张图的分类与是否可循环
+python tools_cli/assign.py --template assets/assign.csv
+python tools_cli/assign.py assets/assign.csv --prune   # 落盘，并清掉已删素材的悬空引用
 python tools_cli/build.py              # 打包
 ```
 
-分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `unassigned`。
+清单是带表头的 CSV `file,category,loop`，一张图想归多个分类就写多行（如吃 / 喝共用一张），
+`loop` 填 `true` / `false`（留空表示不改动）。清单里点名的素材会先摘出原分类再按清单归位，
+没点名的完全不动。
+
+分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `showup` `awake`
+`move` `think` `sport` `cry` `anxious` `surprise` `unassigned`（缺素材会按语义就近降级到 `idle`）。
+
+当前 26 张素材（`lulu_001~026.gif`）：`idle` 6、`happy` 3、`walk` 3、`angry` 3、`showup` 2、`awake` 2，
+`drink` / `move` / `think` / `sport` / `cry` / `anxious` / `surprise` 各 1；其中 6 张标为「只播一次」。
 
 ## 开发
 
 ```powershell
-python -m pytest -q -p no:cacheprovider   # 全量测试（280 个用例）
+python -m pytest -q -p no:cacheprovider   # 全量测试（317 个用例）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 ```
 
@@ -94,7 +110,7 @@ main.py          程序入口：PetApp 组装窗口 / 行为机 / 模块 / 托�
 pet/             核心层（窗口、行为状态机、走动/散步、贴边、托盘、更新…）
 modules/         功能模块层，统一 enable/tick/disable
 ui/              托盘菜单、设置对话框、气泡提示、更新弹窗
-tools_cli/       开发工具（素材预处理 / GIF 流水线 / 接触表 / 打包），不进产物
+tools_cli/       开发工具（素材预处理 / 清单整理 / GIF 流水线 / 接触表 / 打包），不进产物
 tests/           pytest 用例
 assets/          素材（外置，不打进 exe）
 update/latest.json  自动更新清单（发布源，必须入库）

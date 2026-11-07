@@ -14,7 +14,7 @@ SIT = "sit"
 # which → (间隔配置键, 子开关配置键, 通知文案, 表情分类)
 _SPECS = {
     WATER: ("water_min", "water_enabled", "该喝水啦", "drink"),
-    SIT: ("sit_min", "sit_enabled", "起来动一动吧", "happy"),
+    SIT: ("sit_min", "sit_enabled", "起来动一动吧", "sport"),
 }
 
 
