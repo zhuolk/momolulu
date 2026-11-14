@@ -1,10 +1,10 @@
 {
-  "version": "0.2.5",
-  "notes": "素材整批更新为 26 张并新增 8 个表情分类，区分「只播一次」与「可循环」。修复三处问题：「只播一次」的素材实际一直在循环播放；重复双击程序会同时开出多只噜噜；散步会拿待机素材凑数。",
+  "version": "0.2.6",
+  "notes": "待机小动作间隔从约 1 分钟放宽到约 1 小时，修复待机超时后动作连环抽搐；气泡只保留到点提醒（喝水/久坐/吃饭/整点），点按等交互反馈改由表情动作承担；素材 lulu_015、lulu_018 画布统一到 240×240，显示尺寸与其它素材一致。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.5/momolulu-0.2.5.zip",
-    "sha256": "a448b3b8d23dbde53537e51985f275f860d134248fc734f7e022e600de2adcdd",
-    "size": 55471684
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.6/momolulu-0.2.6.zip",
+    "sha256": "fd5d4ab2ca494b51b8caca5486ace68d4540b0642580fb71277bf46ccb8dacb9",
+    "size": 51450423
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
@@ -23,10 +23,10 @@
       "processed/lulu_012.gif": "d3c703634b6bb05201af810c78cd71d3",
       "processed/lulu_013.gif": "bc950d0a601db95a2230d1747acd5f8a",
       "processed/lulu_014.gif": "eed000fcf0c0ed611f63d5526f5e7b8b",
-      "processed/lulu_015.gif": "89ae7c4ccd3056af95b0ddfed67b20f2",
+      "processed/lulu_015.gif": "cc9386a49bd71d18ecf547efc86c9e1a",
       "processed/lulu_016.gif": "aa4aef79b3360a3681cb094b82281953",
       "processed/lulu_017.gif": "8001ea5e5cc2a6050774635d1d104e69",
-      "processed/lulu_018.gif": "5e38012171b47c33adedf493fccd02c8",
+      "processed/lulu_018.gif": "5a4ef2e69d7fb0b17df1d6b9b5a4ca76",
       "processed/lulu_019.gif": "76d6f839b070a9c5b88fb46c79d8745e",
       "processed/lulu_020.gif": "4c28c8b9271c45507ca99c501a21f379",
       "processed/lulu_021.gif": "c87f16384096945d7a66eeb55e067ca0",
