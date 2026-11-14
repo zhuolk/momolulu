@@ -1,10 +1,10 @@
 {
-  "version": "0.2.8",
-  "notes": "新增「状态卡」：点一下托盘图标（或右键菜单「照顾噜噜 ▸ 看看状态」）即可弹出噜噜的数值面板——心情 / 活力 / 饱腹用彩色进度条展示（越健康越绿），底部显示当前噜噜币余额，上班中则改显示本班进账。面板 8 秒后自动收起，不抢焦点、鼠标穿透，不影响你看别的窗口。",
+  "version": "0.2.9",
+  "notes": "噜噜的浮窗全面统一了观感：气泡、右键菜单、更新提示都换成「状态卡」同款的圆角、阴影与配色，一处改动处处生效。右键菜单最上面新增一条数值摘要——心情 / 活力 / 饱腹三条彩色进度条，外加噜噜币余额（上班中改为显示本班进账），不点开状态卡也能一眼看到噜噜最近怎么样。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.8/momolulu-0.2.8.zip",
-    "sha256": "f3ca0b16b73f0552a017d47078d4385dc38fa364f486268533a82f00c512a6ba",
-    "size": 51471764
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.9/momolulu-0.2.9.zip",
+    "sha256": "24f15d1c5157a99e69942c063c663620a11f9eece87a0b6cc4798b338e30d829",
+    "size": 51475445
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
