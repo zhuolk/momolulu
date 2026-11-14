@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import random
 import subprocess
 import sys
 import tempfile
@@ -32,7 +31,7 @@ from pet.updater import LATEST_URL
 from pet.version import VERSION
 from pet.wander import Wanderer
 from pet.winutil import acquire_single_instance, is_foreground_fullscreen, should_hide_pet
-from ui.menu import MENU_LABELS, MenuState, build_menu
+from ui.menu import MenuState, build_menu
 from ui.settings_dialog import SettingsDialog
 from ui.toast import Toast
 from ui.update_prompt import UpdatePrompt
@@ -44,10 +43,6 @@ _FS_CHECK_MS = 1000
 _MODULE_TICK_MS = 1000
 _TOAST_MS = 6000
 _UPDATE_CHECK_DELAY_MS = 5000
-_ASSET_TOAST = "噜噜换新衣服啦"
-
-CLICK_LINES = ("噜噜~", "摸摸头", "咕噜咕噜", "噜噜在这儿")
-FAST_CLICK_LINE = "噜噜生气啦！"
 
 # 模块通知的备用分类（缺该类素材时退一级）
 CATEGORY_FALLBACK = {"drink": "eat"}
@@ -180,9 +175,7 @@ class PetApp:
         self.sprite.drag_moved.connect(self._on_drag_moved)
         self.sprite.drag_finished.connect(self._on_drag_finished)
         self.sprite.clicked.connect(self.behavior.on_user_click)
-        self.sprite.clicked.connect(self._on_clicked)
         self.sprite.fast_clicked.connect(self.behavior.on_fast_click)
-        self.sprite.fast_clicked.connect(self._on_fast_clicked)
         self.sprite.play_finished.connect(self.behavior.on_play_finished)
         self.sprite.right_clicked.connect(self._on_right_clicked)
         self.sprite.moved.connect(self._follow_toast)
@@ -199,8 +192,8 @@ class PetApp:
             self.sprite.y(),
         )
 
-    def _show_toast(self, text: str, kind: str = "info", duration_ms: int = _TOAST_MS) -> None:
-        self.toast.show_message(text, duration_ms=duration_ms, anchor=self._pet_anchor(), kind=kind)
+    def _show_toast(self, text: str, duration_ms: int = _TOAST_MS) -> None:
+        self.toast.show_message(text, duration_ms=duration_ms, anchor=self._pet_anchor())
 
     def _follow_toast(self) -> None:
         """噜噜位置变了（拖拽 / 自己走动 / 贴边滑出 / 屏幕变化）就让气泡跟着走。
@@ -209,12 +202,6 @@ class PetApp:
         """
         if self.toast.isVisible():
             self.toast.move_above_anchor(*self._pet_anchor())
-
-    def _on_clicked(self) -> None:
-        self._show_toast(random.choice(CLICK_LINES))
-
-    def _on_fast_clicked(self) -> None:
-        self._show_toast(FAST_CLICK_LINE, kind="warn")
 
     def _on_right_clicked(self, global_pos: QPoint) -> None:
         self._menu = self._build_menu()
@@ -284,10 +271,6 @@ class PetApp:
         self.config["pet"]["passthrough"] = on
         self.sprite.set_passthrough(on)
         save_config(self.config_path, self.config)
-        if on:
-            self._show_toast("穿透模式：鼠标可以穿过噜噜", kind="warn")
-        else:
-            self._show_toast("交互模式：可以拖拽噜噜")
 
     def _toggle_module(self, key: str, on: bool) -> None:
         cfg_key = MODULE_KEYS.get(key)
@@ -304,14 +287,12 @@ class PetApp:
                 module.set_enabled(want)  # 内部会落盘
             else:
                 self._save_config()
-            self._show_toast(f"{MENU_LABELS[key]}：{'已开启' if on else '已关闭'}")
             return
         if module is not None:
             module.set_enabled(bool(on))
         else:  # 该模块尚未落地（阶段 5 逐个接入）时至少把开关写进配置
             self.config["modules"][cfg_key]["enabled"] = bool(on)
             self._save_config()
-        self._show_toast(f"{MENU_LABELS[key]}：{'已开启' if on else '已关闭'}")
 
     def _pomodoro(self, action: str) -> None:
         module = self.modules.get("pomodoro")
@@ -329,15 +310,12 @@ class PetApp:
         if self.stroller.active:
             return
         if not self.behavior.request("stroll", PRIORITY_MODULE, once=False):
-            self._show_toast("散步素材缺失", kind="warn")
             return
         # 贴边缩回时窗口大半在屏外，得先靠露在屏内的桔子条认屏幕，再退出贴边隐藏
         started = self.stroller.start()
         self.edge_hider.detach()
         if not started:
             self.behavior.on_stroll_finished()
-            return
-        self._show_toast("噜噜去散步啦")
 
     def _open_settings(self) -> None:
         """打开设置面板；保存后立即生效。"""
@@ -362,17 +340,14 @@ class PetApp:
         self.sprite.set_always_on_top(bool(pet.get("always_on_top", True)))
         self.sprite.reload()  # 缩放可能已改变，重建影片缓存
         self._autostart = sync(bool(self.config.get("autostart", False)), self._autostart_command)
-        self._show_toast("设置已保存")
 
     def _toggle_autostart(self) -> None:
         want = not self._autostart
         if not set_enabled(want, self._autostart_command):
-            self._show_toast("开机自启设置失败（可能被安全软件拦截）", kind="warn")
             return
         self._autostart = want
         self.config["autostart"] = want
         save_config(self.config_path, self.config)
-        self._show_toast(f"开机自启：{'已开启' if want else '已关闭'}")
 
     def _quit(self) -> None:
         if getattr(self, "tray", None) is not None:
@@ -523,7 +498,6 @@ class PetApp:
         self.catalog.clear()
         self.catalog.update(fresh)
         self.sprite.reload()
-        self._show_toast(_ASSET_TOAST)
 
     def _prompt_update(self, info: dict) -> None:
         self._update_prompt.show_version(
@@ -646,9 +620,7 @@ class PetApp:
             (self.sprite.drag_moved, self._on_drag_moved),
             (self.sprite.drag_finished, self._on_drag_finished),
             (self.sprite.clicked, self.behavior.on_user_click),
-            (self.sprite.clicked, self._on_clicked),
             (self.sprite.fast_clicked, self.behavior.on_fast_click),
-            (self.sprite.fast_clicked, self._on_fast_clicked),
             (self.sprite.play_finished, self.behavior.on_play_finished),
             (self.sprite.right_clicked, self._on_right_clicked),
             (self.sprite.moved, self._follow_toast),

@@ -190,3 +190,21 @@ def test_double_click_does_not_open_settings(qapp, tmp_path, monkeypatch):
     app._menu_handlers()["open_settings"]()  # 右键菜单的入口仍在
     assert opened == [True]
     app.shutdown()
+
+
+def test_click_and_fast_click_do_not_toast(qapp, tmp_path):
+    """点击 / 连点只让噜噜做反应，不再冒泡；气泡只留给模块的到点提醒。"""
+    app = PetApp(root=build_root(tmp_path))
+    app.sprite.clicked.emit()
+    app.sprite.fast_clicked.emit()
+    assert app.toast.isVisible() is False
+    app.shutdown()
+
+
+def test_module_notify_still_toasts(qapp, tmp_path):
+    """保留的那条路径：模块到点提醒照旧冒泡。"""
+    app = PetApp(root=build_root(tmp_path))
+    app._module_notify("该喝水啦", "drink")
+    assert app.toast.isVisible() is True
+    assert app.toast.current_text == "该喝水啦"
+    app.shutdown()
