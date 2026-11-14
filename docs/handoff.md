@@ -11,15 +11,12 @@
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.7`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 当前版本：`0.2.8`（唯一来源 `pet/version.py` 的 `VERSION`）
 - 测试：383 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
-## 当前进度（本机工作树，**尚未提交**）
-
-仓库最后一次提交是 `3d12f87`（发布 `0.2.7`，已推送）。之后在本地攒了一批新改动，**还没 commit / push**——
-换电脑继续前先提交推送，否则这些改动不会跟着仓库走：
+## 最近一批改动（已随 `0.2.8` 提交推送）
 
 - **状态卡浮窗（`ui/status_card.py`）**：托盘原生悬停提示（`QSystemTrayIcon.setToolTip`）只能一行纯文本，
   画不出进度条，于是另起一个自绘顶层窗：鼠标穿透、不抢焦点、8 秒后自动收起。卡片用三条彩色进度条展示
@@ -31,7 +28,7 @@
 - 新增 `tests/test_status_card.py`，并在 `tests/test_menu.py`（托盘 `clicked` 信号 + 「看看状态」）与
   `tests/test_smoke.py`（状态卡接线）补用例。**测试 370 → 383**，全绿（退出码 0）。
 - 生活数值 / 噜噜币（`modules/vitals.py` / `modules/economy.py`：心情·活力·饱腹按在线时间衰减、上班按分钟
-  进账、商店喂食）已随 `0.2.7` 提交推送，`tests/test_vitals.py` / `tests/test_economy.py` 一并入库。
+  进账、商店喂食）随 `0.2.7` 提交推送，`tests/test_vitals.py` / `tests/test_economy.py` 一并入库。
 
 ## 环境
 
