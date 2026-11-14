@@ -1,10 +1,10 @@
 {
-  "version": "0.2.6",
-  "notes": "待机小动作间隔从约 1 分钟放宽到约 1 小时，修复待机超时后动作连环抽搐；气泡只保留到点提醒（喝水/久坐/吃饭/整点），点按等交互反馈改由表情动作承担；素材 lulu_015、lulu_018 画布统一到 240×240，显示尺寸与其它素材一致。",
+  "version": "0.2.7",
+  "notes": "新增生活系统：噜噜有了心情 / 活力 / 饱腹——跟它玩、喂食、睡觉会改变，长时间不管会慢慢下降。新增噜噜币与上班：上班按分钟赚币、时长越长赚得越多，但上班时活力与心情掉得更快。用噜噜币可在右键「照顾噜噜」里买冰淇淋(10) / 蛋糕(20) / 汉堡(30) 喂食，越贵补的饱腹与心情越多；还有「哄睡」和「上班 / 下班」开关。",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.6/momolulu-0.2.6.zip",
-    "sha256": "fd5d4ab2ca494b51b8caca5486ace68d4540b0642580fb71277bf46ccb8dacb9",
-    "size": 51450423
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.7/momolulu-0.2.7.zip",
+    "sha256": "5c18ec4ecbea83a5fd360503c7031c5b9171e43d6104f1b101d0d41118cd7408",
+    "size": 51462724
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
