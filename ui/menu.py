@@ -2,11 +2,18 @@
 
 `build_menu` 不修改任何状态；checkable 项一律连 `toggled`（`trigger()` 会二次翻转勾选态，
 只有 `toggled` 能稳定拿到用户改变后的值），非 checkable 项连 `triggered`。
+
+菜单顶部放一条与状态卡同款的数值摘要（`StatusHeader`），整体样式表取自 `ui/theme.py`。
 """
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QActionGroup, QMenu, QMessageBox
+from PyQt5.QtCore import QRectF
+from PyQt5.QtGui import QPainterPath, QRegion
+from PyQt5.QtWidgets import QActionGroup, QMenu, QMessageBox, QWidgetAction
+
+from ui.status_card import StatusHeader
+from ui.theme import RADIUS, menu_style
 
 MENU_KEYS = ("pomodoro", "water", "sit", "meal", "hourly")
 MENU_LABELS = {
@@ -22,6 +29,32 @@ ABOUT_TITLE = "关于噜噜"
 ABOUT_TEXT = "噜噜\n素材来自网络，仅供个人学习使用。"
 
 
+class CardMenu(QMenu):
+    """与状态卡同款圆角的菜单。
+
+    QSS 里写 `border-radius` 会写坏 `QStyleSheetStyle` 的堆（见 `ui.theme.menu_style`），
+    所以圆角改用窗口 mask 切——尺寸一变就重切一次。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._masked = None
+
+    def round_corners(self) -> None:
+        """按当前尺寸重切圆角；尺寸没变就跳过（`resizeEvent` 会频繁触发）。"""
+        size = self.size()
+        if size == self._masked:
+            return
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, size.width(), size.height()), RADIUS, RADIUS)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        self._masked = size
+
+    def resizeEvent(self, event):  # noqa: N802 - Qt 命名
+        super().resizeEvent(event)
+        self.round_corners()
+
+
 class MenuState:
     """菜单需要展示的全部状态快照。"""
 
@@ -35,6 +68,7 @@ class MenuState:
         update_version: str | None = None,
         working: bool = False,
         foods: tuple = (),
+        vitals: tuple | None = None,
     ):
         self.visible = bool(visible)
         self.passthrough = bool(passthrough)
@@ -45,6 +79,18 @@ class MenuState:
         self.working = bool(working)
         # (key, 文案, 价格, 是否买得起)
         self.foods = tuple(foods)
+        # (心情, 活力, 饱腹, 噜噜币, 本班进账)，为 None 时不显示顶部摘要条
+        self.vitals = tuple(vitals) if vitals is not None else None
+
+
+def build_header(state: MenuState) -> StatusHeader | None:
+    """按 `state.vitals` 造顶部数值摘要条；没有数值时返回 None。"""
+    if not state.vitals:
+        return None
+    mood, energy, satiety, coins, earned = state.vitals
+    header = StatusHeader()
+    header.set_state(mood, energy, satiety, coins, state.working, earned)
+    return header
 
 
 # ------------------------------------------------------------------ 回调适配
@@ -88,7 +134,15 @@ def _slot_module(handlers, key: str):
 
 
 def build_menu(parent, state: MenuState, handlers) -> QMenu:
-    menu = QMenu(parent)
+    menu = CardMenu(parent)
+    menu.setStyleSheet(menu_style())
+
+    header = build_header(state)
+    if header is not None:
+        holder = QWidgetAction(menu)
+        holder.setDefaultWidget(header)
+        menu.addAction(holder)
+        menu.addSeparator()
 
     visible = menu.addAction("显示 / 隐藏噜噜")
     visible.setCheckable(True)

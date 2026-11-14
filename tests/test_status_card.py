@@ -1,6 +1,6 @@
 """状态卡：数值条配色分档、底部备注、定位夹取与重绘。"""
 
-from ui.status_card import StatusCard, card_height, level_color
+from ui.status_card import StatusCard, StatusHeader, card_height, header_height, level_color
 
 RED = "#e5484d"
 AMBER = "#f5a524"
@@ -60,3 +60,12 @@ def test_set_state_redraws_visible_card_without_error(qapp):
     card.set_state(mood=10, energy=95, satiety=45, coins=7, working=True, earned=3)
     card.repaint()  # 触发 paintEvent，越界 / 空值都会在这里炸
     card.hide()
+
+
+def test_header_fixed_size_and_state(qapp):
+    """菜单摘要条：固定尺寸、写入数值后可无错重绘。"""
+    header = StatusHeader()
+    assert header.height() == header_height() and header.width() > 0
+    header.set_state(mood=10, energy=95, satiety=45, coins=42.7, working=False, earned=0)
+    header.repaint()
+    assert header._values() == [10.0, 95.0, 45.0] and header.note_text() == "噜噜币 42"

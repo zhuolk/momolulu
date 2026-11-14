@@ -11,10 +11,22 @@
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.8`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：383 个 pytest 用例全量通过
+- 当前版本：`0.2.9`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：396 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
+
+## 本轮改动（0.2.9）
+
+- **界面风格统一**：新增 `ui/theme.py`（调色板 + `draw_card()` + `menu_style()`），
+  `ui/toast.py` / `ui/status_card.py` / `ui/update_prompt.py` / `ui/menu.py` 改用它，
+  气泡与更新弹窗的圆角、阴影、配色从此跟状态卡一处改、处处变。
+- **右键菜单加数值摘要**：菜单最上面一条 `StatusHeader`（状态卡同款进度条：心情 / 活力 / 饱腹 +
+  噜噜币或本班进账），数据由 `main._menu_state()` 从 `vitals` / `economy` 两个模块取。
+- **踩坑记录**：`QMenu` 的样式表里一旦出现 `border-radius`，本机 `QStyleSheetStyle` 会写坏堆，
+  全量测试跑到 `main.py::_start_ui` 的 `sprite.show()` 时整个进程 access violation；
+  菜单圆角改用窗口 mask（`ui/menu.CardMenu`）。
+- 测试 383 → **396**（新增 `tests/test_theme.py` 6 项、`tests/test_menu.py` +6、`tests/test_status_card.py` +1）。
 
 ## 最近一批改动（已随 `0.2.8` 提交推送）
 
@@ -73,7 +85,8 @@ modules/              功能模块层，统一 enable/tick/disable（见 base.py
   vitals.py           生活数值：心情 / 活力 / 饱腹（按在线时间衰减，低值软影响待机情绪）
   economy.py          噜噜币与上班（按分钟进账 + 商店食物表；扣币与补数值在 main 牵线）
 ui/                   托盘菜单、设置对话框、气泡提示 toast、数值状态卡、更新弹窗
-  status_card.py      数值状态卡（自绘进度条浮窗，托盘左键 / 菜单「看看状态」弹出）
+  theme.py            界面统一风格：调色板 / 圆角阴影卡片画法 / 右键菜单样式表（几处共用）
+  status_card.py      数值状态卡（自绘进度条浮窗，托盘左键 / 菜单「看看状态」弹出）＋菜单顶部同款摘要条
   update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
   prepare.py          素材预处理：编号 / md5 去重 / 分类登记（不再去背，见「素材规范」）
@@ -81,7 +94,7 @@ tools_cli/            开发工具（不进产物）
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                383 个用例（pytest，conftest 里提供 qapp fixture）
+tests/                396 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe，当前 26 张 `processed/lulu_001~026.gif`）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词）+ superpowers 下的 spec / plan
@@ -156,6 +169,17 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
   用彩色进度条展示心情 / 活力 / 饱腹。`main._show_status_card()` 弹（托盘左键 / 菜单），
   `_update_status()`（1s 心跳）在卡片可见时刷新。**托盘原生 tooltip 只能一行纯文本，放不下进度条**，
   所以别再往 `setToolTip` 里塞可视化。
+- **界面风格统一走 `ui/theme.py`**：调色板（`BG` / `BORDER` / `TEXT_COLOR` / `STYLES`）、圆角阴影卡片画法
+  `draw_card()`、右键菜单样式表 `menu_style()` 都只有这一份。状态卡、气泡、更新弹窗、右键菜单共用；
+  改观感改这里。`qcolor()` 解析的是 CSS 风格 `#RRGGBBAA`（末两位是 alpha），
+  **QSS 里不认这种写法**，所以 `menu_style()` 一律写 `rgba()`。
+- **`menu_style()` 里绝不能出现 `border-radius`**：本机 `QStyleSheetStyle` 处理圆角时会写坏堆，
+  之后任意一次 `show()`（比如 `Sprite.show()`）直接 access violation，全量测试跑到一半整个进程崩掉，
+  且崩溃点看起来和菜单毫无关系。菜单圆角改由 `ui/menu.CardMenu` 的**窗口 mask** 提供。
+  护栏：`tests/test_theme.py::test_menu_style_keeps_radius_off_the_menu_panel`。
+- **右键菜单顶部有一条数值摘要**：`ui/menu.MenuState.vitals`（心情 / 活力 / 饱腹 / 噜噜币 / 本班进账，
+  为 `None` 则不显示）→ `build_header()` 造 `StatusHeader`（状态卡同款进度条，但不画卡片边框阴影）
+  → `QWidgetAction` 塞在菜单最前。`main._menu_state()` 从 `vitals` / `economy` 两个模块取数。
 - **生活系统（数值 + 噜噜币）拆成两个模块**，`main` 是唯一的牵线人：
   - `modules/vitals.py`（心情 / 活力 / 饱腹）与 `modules/economy.py`（噜噜币 / 上班）**互不 import**；
     上班→衰减翻倍、食物→补数值、币→扣减这三处耦合全在 `main._sync_life()` / `_buy_food()` 里连。
@@ -227,7 +251,7 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 
 ```powershell
 cd momolulu
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 383 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 396 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
@@ -296,7 +320,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 383 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 396 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。

@@ -229,6 +229,7 @@ class PetApp:
     def _menu_state(self) -> MenuState:
         pomodoro = self.modules.get("pomodoro")
         economy = self.modules.get("economy")
+        vitals = self.modules.get("vitals")
         coins = int(economy.coins) if economy is not None else 0
         info = self._update_info
         pending = info.get("version") if isinstance(info, dict) and info.get("package") else None
@@ -243,6 +244,11 @@ class PetApp:
             foods=tuple(
                 (key, label, price, coins >= price)
                 for key, label, price, _satiety, _mood in FOODS
+            ),
+            vitals=(
+                (vitals.mood, vitals.energy, vitals.satiety, economy.coins, economy.earned)
+                if vitals is not None and economy is not None
+                else None
             ),
         )
 

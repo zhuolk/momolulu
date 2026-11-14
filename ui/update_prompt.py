@@ -1,12 +1,12 @@
-"""更新确认小窗：复用 Toast 的圆角卡片画法，但可点击（不设 WindowTransparentForInput）。"""
+"""更新确认小窗：复用共享的圆角卡片画法，但可点击（不设 WindowTransparentForInput）。"""
 
 from __future__ import annotations
 
 from PyQt5.QtCore import QPoint, QRectF, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QPen
+from PyQt5.QtGui import QPainter
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from ui.toast import PAD, SHADOW, STYLES, TOAST_RADIUS, _qcolor
+from ui.theme import PAD, SHADOW, STYLES, draw_card
 
 PROMPT_WIDTH = 240
 TITLE = "有新版本，要现在更新吗"
@@ -136,25 +136,8 @@ class UpdatePrompt(QWidget):
         self.move(x, y)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt 命名
-        style = STYLES["info"]
         card = QRectF(SHADOW, SHADOW, self.width() - 2 * SHADOW, self.height() - 2 * SHADOW)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setPen(Qt.NoPen)
-        for step in range(SHADOW, 0, -1):
-            ratio = (SHADOW - step) / SHADOW
-            alpha = int(60 * ratio * ratio / 3)
-            if alpha <= 0:
-                continue
-            painter.setBrush(QColor(0, 0, 0, alpha))
-            painter.drawRoundedRect(
-                card.adjusted(-step + 2, -step + 5, step, step),
-                TOAST_RADIUS + step,
-                TOAST_RADIUS + step,
-            )
-        painter.setBrush(_qcolor(style["bg"]))
-        painter.drawRoundedRect(card, TOAST_RADIUS, TOAST_RADIUS)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(_qcolor(style["border"]), 1))
-        painter.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), TOAST_RADIUS, TOAST_RADIUS)
+        draw_card(painter, card)
         painter.end()

@@ -2,36 +2,23 @@
 
 `Toast` 是一个独立顶层窗（`Qt.Tool`），带 `Qt.WindowTransparentForInput` 所以
 不会抢键鼠焦点，也不影响用户在其他程序里的输入。
+
+圆角、阴影与配色取自 `ui/theme.py`，与状态卡保持同一观感。
 """
 
 from __future__ import annotations
 
 from PyQt5.QtCore import QPoint, QRect, QRectF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QFontMetrics, QPainter, QPen
+from PyQt5.QtGui import QFontMetrics, QPainter
 from PyQt5.QtWidgets import QApplication, QLabel, QWidget
 
+from ui.theme import PAD, SHADOW, STYLES, draw_card
+
 TOAST_WIDTH = 220
-TOAST_RADIUS = 12
 TOAST_MAX_LINES = 4
 
-SHADOW = 12
-PAD = 10
 ANCHOR_GAP = 8
 DEFAULT_DURATION_MS = 6000
-
-STYLES = {
-    "info": {"bg": "#FFFFFFEE", "border": "#0000001A", "text": "#333333"},
-    "warn": {"bg": "#FFF6E5EE", "border": "#D9832440", "text": "#8A5A00"},
-}
-
-
-def _qcolor(rgba: str) -> QColor:
-    """解析 `#RRGGBBAA`（CSS 风格，末两位为 alpha）。"""
-    text = rgba.lstrip("#")
-    if len(text) == 8:
-        r, g, b, a = (int(text[i : i + 2], 16) for i in (0, 2, 4, 6))
-        return QColor(r, g, b, a)
-    return QColor(rgba)
 
 
 def _elide_lines(text: str, metrics: QFontMetrics, width: int, max_lines: int) -> str:
@@ -155,30 +142,8 @@ class Toast(QWidget):
         self.move(x, y)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt 命名
-        style = STYLES[self._kind]
         card = QRectF(SHADOW, SHADOW, self.width() - 2 * SHADOW, self.height() - 2 * SHADOW)
-
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-
-        shadow = QColor(0, 0, 0)
-        painter.setPen(Qt.NoPen)
-        for step in range(SHADOW, 0, -1):
-            ratio = (SHADOW - step) / SHADOW
-            alpha = int(60 * ratio * ratio / 3)
-            if alpha <= 0:
-                continue
-            painter.setBrush(QColor(shadow.red(), shadow.green(), shadow.blue(), alpha))
-            painter.drawRoundedRect(
-                card.adjusted(-step + 2, -step + 5, step, step),
-                TOAST_RADIUS + step,
-                TOAST_RADIUS + step,
-            )
-
-        painter.setBrush(_qcolor(style["bg"]))
-        painter.drawRoundedRect(card, TOAST_RADIUS, TOAST_RADIUS)
-
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(_qcolor(style["border"]), 1))
-        painter.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), TOAST_RADIUS, TOAST_RADIUS)
+        draw_card(painter, card, self._kind)
         painter.end()

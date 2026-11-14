@@ -1,10 +1,12 @@
 from PIL import Image
+from PyQt5.QtCore import QPoint
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QMenu, QSystemTrayIcon
+from PyQt5.QtWidgets import QMenu, QSystemTrayIcon, QWidgetAction
 
 from pet.catalog import default_categories, set_track
 from pet.tray import Tray, ensure_tray_icon
 from ui.menu import MenuState, build_menu
+from ui.status_card import StatusHeader
 
 
 class Handlers:
@@ -259,3 +261,67 @@ def test_care_submenu_sits_after_interact_before_settings(qapp):
     m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
     order = [a.text().replace("&", "") for a in m.actions()]
     assert order.index("搞搞震") < order.index("照顾噜噜") < order.index("设置…")
+
+
+# ---------------------------------------------------------------- 顶部数值摘要
+
+VITALS = (72.5, 48.0, 91.0, 42.7, 0)
+
+
+def header_of(menu):
+    """取菜单顶部的数值摘要条；没有则返回 None。"""
+    for action in menu.actions():
+        widget = action.defaultWidget() if isinstance(action, QWidgetAction) else None
+        if isinstance(widget, StatusHeader):
+            return widget
+    return None
+
+
+def test_menu_shows_vitals_header(qapp):
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, vitals=VITALS), Handlers().__dict__
+    )
+    header = header_of(m)
+    assert header is not None
+    assert header._values() == [72.5, 48.0, 91.0]
+    assert header.note_text() == "噜噜币 42"
+
+
+def test_vitals_header_sits_on_top(qapp):
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, vitals=VITALS), Handlers().__dict__
+    )
+    assert isinstance(m.actions()[0].defaultWidget(), StatusHeader)
+
+
+def test_menu_without_vitals_has_no_header(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    assert header_of(m) is None
+
+
+def test_vitals_header_follows_work_state(qapp):
+    m = build_menu(
+        None,
+        MenuState(True, False, False, MODS, False, working=True, vitals=(50, 50, 50, 10, 15)),
+        Handlers().__dict__,
+    )
+    assert header_of(m).note_text() == "上班中 · 已赚 15 噜噜币"
+
+
+def test_menu_applies_card_style_sheet(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    sheet = m.styleSheet()
+    assert "QMenu::item" in sheet
+    assert "QMenu::item:selected" in sheet
+
+
+def test_menu_cuts_rounded_corners(qapp):
+    """圆角靠窗口 mask 切——QSS 里写 `border-radius` 会写坏堆，见 `ui.theme.menu_style`。"""
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    m.resize(200, 120)
+    m.round_corners()
+    mask = m.mask()
+    assert not mask.isEmpty()
+    assert mask.boundingRect().width() == 200
+    assert not mask.contains(QPoint(0, 0))       # 左上角被切掉
+    assert mask.contains(QPoint(100, 60))        # 中间照常

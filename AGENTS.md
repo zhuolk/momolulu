@@ -27,7 +27,7 @@
 
 ## 测试
 
-- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **383** 个用例）。
+- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **396** 个用例）。
 - 本机 **不打印 `N passed` 汇总行**，判断全绿看**退出码是否为 0**；
   用例数用 `--collect-only -q -p no:cacheprovider` 逐文件求和交叉确认。
 - 加 `-p no:cacheprovider` 避免在仓库留下 `.pytest_cache`。
@@ -71,6 +71,10 @@
 - **解压更新包必须逐成员直接写最终路径**，不要「先 `extractall` 再改名展平」——
   杀软持句柄会让目录改名稳定吃 `WinError 5`，整包永远装不上（回归测试见
   `tests/test_program_update.py::test_prepare_program_update_denied_rename_still_stages`）。
+- **样式表里不要写 `border-radius`**（`QMenu` 上尤其）：本机 `QStyleSheetStyle` 处理圆角时会写坏堆，
+  之后任意一次 `show()`（如 `Sprite.show()`）直接 access violation，全量测试跑到一半整个进程崩掉，
+  崩溃点看着和菜单毫无关系。菜单圆角用窗口 mask（`ui/menu.CardMenu`），
+  卡片圆角走自绘 `ui/theme.draw_card()`。护栏：`tests/test_theme.py::test_menu_style_keeps_radius_off_the_menu_panel`。
 - 气泡跟随统一订阅 `Sprite.moved` 信号，**不要在各个交互函数里分别补气泡位置**。
 - **置顶 ≠ 能压住任务栏**：噜噜是 `WS_EX_TOPMOST`，任务栏同属置顶层，走进任务栏那条带里会被压住。
   要贴着屏幕边走就用 `availableGeometry()`（工作区），别用 `geometry()`（整屏）。
