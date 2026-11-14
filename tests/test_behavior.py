@@ -4,6 +4,7 @@ from pet.config import DEFAULTS
 
 # 待机随机小动作可能落到的状态（`_AUTO_ACTIONS` 各分类的大写名）
 _AUTO_STATES = ("WANDER", "SAD", "BATH", "CRY", "ANXIOUS", "SURPRISE")
+_AUTO_CATEGORIES = ("walk", "sad", "bath", "cry", "anxious", "surprise")
 
 
 class FakeSprite:
@@ -268,3 +269,45 @@ def test_stroll_finished_ignored_when_other_state_took_over(qapp):
     b.on_drag_started()
     b.on_stroll_finished()
     assert b.state == "DRAGGED"
+
+
+def test_unweighted_action_order_is_a_full_permutation(qapp):
+    b, sp, _ = make()
+    assert sorted(b._action_order()) == sorted(_AUTO_CATEGORIES)
+
+
+def test_action_weights_bias_which_category_is_tried_first(qapp):
+    """权重把某一类抬到极高时，它基本排在最前（软影响低数值时的情绪）。"""
+    b, sp, _ = make()
+    b.set_action_weights({"sad": 1e9})
+    assert b._action_order()[0] == "sad"
+    assert sorted(b._action_order()) == sorted(_AUTO_CATEGORIES)
+
+
+def test_clearing_action_weights_restores_equal_chance(qapp):
+    b, sp, _ = make()
+    b.set_action_weights({"sad": 3.0})
+    b.set_action_weights(None)
+    assert b._action_weights is None
+    b.set_action_weights({"sad": 3.0})
+    b.set_action_weights({})  # 空表同样视为不加权
+    assert b._action_weights is None
+
+
+def test_weighted_order_still_tries_every_category(qapp):
+    """权重把唯一有素材的分类压到最低时，仍要顺着整张序表找到它，不能空转一轮。"""
+
+    class SparseSprite(FakeSprite):
+        def play(self, category):
+            self.played.append(category)
+            return category == "walk"
+
+    clock, sp = Clock(), SparseSprite()
+    b = Behavior(sp, DEFAULTS, clock=clock)
+    b.start()
+    b.set_action_weights({"walk": 1e-6})
+    b.force_wander_chance(0.0)  # 别掷成睡觉
+
+    clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
+    b.tick(clock())
+    assert b.state == "WANDER"

@@ -21,9 +21,14 @@ class Handlers:
         self.quit = lambda: self.calls.append(("quit",))
         self.update_now = lambda: self.calls.append(("update_now",))
         self.stroll = lambda: self.calls.append(("stroll",))
+        self.toggle_work = lambda on: self.calls.append(("work", on))
+        self.soothe = lambda: self.calls.append(("soothe",))
+        self.buy_food = lambda key: self.calls.append(("buy_food", key))
 
 
 MODS = {"pomodoro": False, "water": True, "sit": True, "meal": True, "hourly": False}
+# (key, 文案, 价格, 是否买得起)
+FOODS_STATE = (("ice_cream", "冰淇淋", 10, True), ("cake", "蛋糕", 20, False))
 
 
 def actions(menu):
@@ -183,3 +188,55 @@ def test_stroll_triggers_handler(qapp):
     m = build_menu(None, MenuState(True, False, False, MODS, False), h.__dict__)
     actions(actions(m)["搞搞震"].menu())["散步"].trigger()
     assert ("stroll",) in h.calls
+
+
+def care_menu(menu):
+    return actions(menu)["照顾噜噜"].menu()
+
+
+def test_care_submenu_holds_feed_soothe_and_work(qapp):
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, foods=FOODS_STATE), Handlers().__dict__
+    )
+    care = actions(care_menu(m))
+    assert "喂食" in care and "哄睡" in care and "上班 / 下班" in care
+
+
+def test_food_items_show_price_and_disable_unaffordable(qapp):
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, foods=FOODS_STATE), Handlers().__dict__
+    )
+    feed = actions(actions(care_menu(m))["喂食"].menu())
+    assert feed["冰淇淋（10 噜噜币）"].isEnabled() is True
+    assert feed["蛋糕（20 噜噜币）"].isEnabled() is False  # 买不起就置灰
+
+
+def test_buy_food_reports_the_key(qapp):
+    h = Handlers()
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, foods=FOODS_STATE), h.__dict__
+    )
+    actions(actions(care_menu(m))["喂食"].menu())["冰淇淋（10 噜噜币）"].trigger()
+    assert ("buy_food", "ice_cream") in h.calls
+
+
+def test_soothe_triggers_handler(qapp):
+    h = Handlers()
+    m = build_menu(None, MenuState(True, False, False, MODS, False), h.__dict__)
+    actions(care_menu(m))["哄睡"].trigger()
+    assert ("soothe",) in h.calls
+
+
+def test_work_item_reflects_state_and_reports_change(qapp):
+    h = Handlers()
+    m = build_menu(None, MenuState(True, False, False, MODS, False, working=True), h.__dict__)
+    work = actions(care_menu(m))["上班 / 下班"]
+    assert work.isCheckable() is True and work.isChecked() is True
+    work.trigger()
+    assert ("work", False) in h.calls
+
+
+def test_care_submenu_sits_after_interact_before_settings(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    order = [a.text().replace("&", "") for a in m.actions()]
+    assert order.index("搞搞震") < order.index("照顾噜噜") < order.index("设置…")

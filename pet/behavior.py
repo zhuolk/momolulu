@@ -29,7 +29,7 @@ AWAKE = "AWAKE"
 
 # 分类 → 状态名（默认取分类大写，个别需要不同叫法）
 _STATE_NAMES = {"walk": WANDER, "stroll": STROLL}
-# 待机时可能触发的小动作（等概率随机取一个）
+# 待机时可能触发的小动作（等概率随机取一个；外部可用 `set_action_weights` 加权）
 _AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")
 _SLEEP_CHANCE = 0.5
 _DEFAULT_MAX_MS = 8000
@@ -65,6 +65,7 @@ class Behavior(QObject):
         self._last_user_activity = clock()
         self._next_auto_at = clock()
         self._wander_chance: float | None = None
+        self._action_weights: dict[str, float] | None = None
         self._stopped = True
 
     # ------------------------------------------------------------ 只读属性
@@ -201,6 +202,14 @@ class Behavior(QObject):
         """测试钩子：把自动行为里的随机判定固定为概率 p（1.0 = 必定触发）。"""
         self._wander_chance = float(p)
 
+    def set_action_weights(self, weights: dict[str, float] | None) -> None:
+        """给待机小动作加权（软影响：低数值时更偏向负面情绪）。
+
+        `None` 或空 dict 表示不加权，恢复等概率随机。权重只影响「先试哪个」的顺序，
+        抽到的分类缺素材仍会往后试，所以不会因为权重把某一轮空转掉。
+        """
+        self._action_weights = dict(weights) if weights else None
+
     def _auto_action(self, now: datetime) -> None:
         """做一次待机小动作。
 
@@ -208,9 +217,22 @@ class Behavior(QObject):
         一整个 `idle_to_wander` 间隔什么都不发生。间隔先排上，避免每一 tick 重来。
         """
         self._next_auto_at = now + timedelta(seconds=self._wander_gap())
-        for category in self._rng.sample(_AUTO_ACTIONS, len(_AUTO_ACTIONS)):
+        for category in self._action_order():
             if self.request(category, PRIORITY_AUTO, once=True):
                 return
+
+    def _action_order(self) -> list[str]:
+        """待机小动作的尝试顺序：有权重时按权重不放回地抽，否则等概率打乱。"""
+        if not self._action_weights:
+            return self._rng.sample(_AUTO_ACTIONS, len(_AUTO_ACTIONS))
+        remaining = list(_AUTO_ACTIONS)
+        order: list[str] = []
+        while remaining:
+            weights = [max(1e-6, float(self._action_weights.get(c, 1.0))) for c in remaining]
+            picked = self._rng.choices(remaining, weights=weights, k=1)[0]
+            order.append(picked)
+            remaining.remove(picked)
+        return order
 
     def _insert_awake(self, max_ms: int) -> None:
         """刚睡醒：插播一次「醒觉」，播完（或到时）再回待机。

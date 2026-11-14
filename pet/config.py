@@ -31,6 +31,26 @@ DEFAULTS: dict = {
                             "water_min": 45, "sit_min": 60, "snooze_min": 10},
         "meal_reminder": {"enabled": True, "times": ["12:00", "18:30"]},
         "hourly_chime": {"enabled": False},
+        # 生活数值：0~100，只按「在线时间」衰减（进程没跑的那段不扣）
+        "vitals": {
+            "enabled": True,
+            "mood": 80,
+            "energy": 80,
+            "satiety": 80,
+            "mood_decay_per_hour": 6,
+            "energy_decay_per_hour": 8,
+            "satiety_decay_per_hour": 10,
+            "energy_sleep_recover_per_hour": 30,
+            "work_decay_multiplier": 2,
+            "warn_threshold": 30,
+            "low_threshold": 10,
+        },
+        # 噜噜币与上班收入
+        "economy": {
+            "enabled": True,
+            "coins": 0,
+            "income_per_minute": 1,
+        },
     },
 }
 
@@ -78,12 +98,27 @@ def _valid_times(value: object) -> bool:
     )
 
 
+def _valid_level(value: object) -> bool:
+    """生活数值：允许 0（见底）到 100 之间的任意数。"""
+    return _is_number(value) and 0 <= float(value) <= 100
+
+
+def _valid_coins(value: object) -> bool:
+    """噜噜币：允许 0，不允许负数。"""
+    return _is_number(value) and float(value) >= 0
+
+
 # 需要特殊校验的路径（点号分隔），其余按默认值的类型与正数规则校验
+# 注意：`_valid_scalar` 对整数默认值要求 `> 0`，所以「可以是 0」的字段必须走这里
 _SPECIAL = {
     "pet.pos": _valid_pos,
     "pet.edge_hide": _valid_edge_hide,
     "pet.state_intervals.idle_to_wander": _valid_interval,
     "modules.meal_reminder.times": _valid_times,
+    "modules.vitals.mood": _valid_level,
+    "modules.vitals.energy": _valid_level,
+    "modules.vitals.satiety": _valid_level,
+    "modules.economy.coins": _valid_coins,
 }
 
 

@@ -10,11 +10,35 @@ def test_defaults_match_spec():
         "health_reminder",
         "meal_reminder",
         "hourly_chime",
+        "vitals",
+        "economy",
     }
     assert DEFAULTS["modules"]["meal_reminder"]["times"] == ["12:00", "18:30"]
     assert DEFAULTS["pet"]["state_intervals"] == {"idle_to_wander": [3300, 3900], "idle_to_sleep": 900}
     assert DEFAULTS["modules"]["health_reminder"]["enabled"] is True
     assert DEFAULTS["modules"]["pomodoro"]["enabled"] is False
+    assert DEFAULTS["modules"]["vitals"]["enabled"] is True
+    assert DEFAULTS["modules"]["economy"]["coins"] == 0
+
+
+def test_vitals_and_coins_allow_zero_and_reject_out_of_range():
+    """心情 / 活力 / 饱腹 / 噜噜币都允许 0（`_valid_scalar` 要求 > 0，故走 `_SPECIAL`）。"""
+    cfg = json.loads(json.dumps(DEFAULTS))
+    cfg["modules"]["vitals"].update({"mood": 0, "energy": 0, "satiety": 0})
+    cfg["modules"]["economy"]["coins"] = 0
+    out = validate(cfg)
+    assert out["modules"]["vitals"]["mood"] == 0
+    assert out["modules"]["vitals"]["energy"] == 0
+    assert out["modules"]["vitals"]["satiety"] == 0
+    assert out["modules"]["economy"]["coins"] == 0
+
+    bad = json.loads(json.dumps(DEFAULTS))
+    bad["modules"]["vitals"].update({"mood": 150, "energy": -5})
+    bad["modules"]["economy"]["coins"] = -1
+    out = validate(bad)
+    assert out["modules"]["vitals"]["mood"] == 80
+    assert out["modules"]["vitals"]["energy"] == 80
+    assert out["modules"]["economy"]["coins"] == 0
 
 
 def test_load_missing_returns_defaults(tmp_path):

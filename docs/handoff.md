@@ -6,31 +6,33 @@
 
 噜噜桌宠（打包名 `momolulu`）：Windows 桌面水豚挂件。PyQt5 无边框置顶窗口循环播放 GIF，
 带行为状态机、自主走动、绕屏散步、贴边隐藏、鼠标穿透双模式、托盘菜单，
-番茄钟 / 喝水·久坐 / 吃饭 / 整点报时提醒，以及启动时自动检查的素材热更与主程序自动更新。
+番茄钟 / 喝水·久坐 / 吃饭 / 整点报时提醒，生活数值（心情·活力·饱腹）与噜噜币（上班赚钱 + 商店喂食），
+以及启动时自动检查的素材热更与主程序自动更新。
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.4`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：317 个 pytest 用例全量通过
+- 当前版本：`0.2.6`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：370 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
 ## 当前进度（本机工作树，**尚未提交**）
 
-仓库最后一次提交是 `7098c8f`（发布 `0.2.4`）。之后在本地攒了一批改动，**都还没 commit / push**——
+仓库最后一次提交是 `1a95310`（发布 `0.2.6`，已推送）。之后在本地攒了一批新功能，**都还没 commit / push**——
 换电脑继续前先提交推送，否则这些改动不会跟着仓库走：
 
-- **素材整批替换**：`assets/processed/` 现在是新的 26 张（`lulu_001~026.gif`）：`001~012` 是就地换成新图，
-  `013~026` 是新增。`assets/categories.json` 随之重写（归属 + `loops`，其中 6 张 `false`）。
-- **新增素材工具** `tools_cli/assign.py`（按 CSV 清单批量归位分类 + 打循环标 + `--prune` 清悬空引用）
-  与单测 `tests/test_assign.py`；`.gitignore` 与 `build.py` 的 `_DEV_ONLY` 都已排除 `assign*.csv`。
-  `prepare.py` 登记新素材时改为默认写 `loops: true`。
-- **分类 10 → 18**：新增 `showup` `awake` `move` `think` `sport` `cry` `anxious` `surprise`
-  与 5 条语义回退链（`pet/catalog.py`），触发点接在 `pet/behavior.py`、`main.py`、
-  `modules/health_reminder.py`（详见「架构要点」）。
-- **测试 308 → 317**，全绿（退出码 0）。
-- 素材清单 `assets/assign.csv` **不入库**（开发期输入），新机器上没有它；真相始终是
-  `assets/categories.json`，要重新出一份清单跑 `python tools_cli/assign.py --template assets/assign.csv`。
+- **生活数值（`modules/vitals.py`）**：心情 / 活力 / 饱腹三项 0~100，只按「在线时间」衰减（进程没跑的
+  那段不扣，靠持久化接着用）。上班时心情 / 活力衰减翻倍（`work_decay_multiplier`），睡觉时活力改为回升
+  （`energy_sleep_recover_per_hour`）。跌破 `low_threshold` 冒一次泡，回到 `warn_threshold` 以上才重新武装。
+  数值偏低时给行为机一张权重表（`action_weights()`），让待机小动作更偏负面情绪（软影响）。
+- **噜噜币与上班（`modules/economy.py`）**：上班按分钟攒币（`income_per_minute`），上班来源是
+  菜单手动开关与番茄钟专注联动的「或」。币在「照顾噜噜 ▸ 喂食」里买食物（冰淇淋 10 / 蛋糕 20 / 汉堡 30，
+  越贵补的饱腹与心情越多）。食物补数值、上班影响衰减、币扣减三处耦合全部在 `main._sync_life` / `_buy_food` 牵线，
+  **模块之间不互相引用**。
+- 新增 `tests/test_vitals.py`、`tests/test_economy.py`，并补了行为机加权、菜单「照顾噜噜」、配置 0 值校验与
+  `main` 接线（买食物 / 上下班 / 哄睡 / 设置面板不被旧快照顶掉）等用例。**测试 330 → 370**，全绿（退出码 0）。
+- 上一批未提交改动（素材整批替换、`assign.py`、分类 10 → 18、待机间隔放宽到约 1 小时等）已随 `0.2.5` /
+  `0.2.6` 提交推送，下面「架构要点 / 素材规范」里已按现状描述。
 
 ## 环境
 
@@ -72,6 +74,8 @@ modules/              功能模块层，统一 enable/tick/disable（见 base.py
   health_reminder.py  喝水与久坐提醒（两个独立子开关 + snooze）
   meal_reminder.py    吃饭提醒（时间点列表）
   hourly_chime.py     整点报时
+  vitals.py           生活数值：心情 / 活力 / 饱腹（按在线时间衰减，低值软影响待机情绪）
+  economy.py          噜噜币与上班（按分钟进账 + 商店食物表；扣币与补数值在 main 牵线）
 ui/                   托盘菜单、设置对话框、气泡提示 toast、更新弹窗
   update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
@@ -80,7 +84,7 @@ tools_cli/            开发工具（不进产物）
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                317 个用例（pytest，conftest 里提供 qapp fixture）
+tests/                370 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe，当前 26 张 `processed/lulu_001~026.gif`）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词）+ superpowers 下的 spec / plan
@@ -104,15 +108,19 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
   分类已被别的高优先级状态顶掉时忽略。
   注意 PyQt5 里 `loopCount` 是**属性不是 setter**，要写 `movie.loopCount = -1`。
 - **行为状态机** `pet/behavior.py`：`idle` 空闲一段时间后随机触发小动作，
-  `_AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")` 等概率六选一。
+  `_AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")` **默认等概率六选一**；
+  `vitals.action_weights()` 给出的权重表经 `set_action_weights()` 传进来后改为**按权重不放回抽**
+  （`_action_order()`）——权重只改「先试哪个」的顺序，抽到的分类缺素材仍会往后试，不会空转一整轮；
+  `set_action_weights(None)` 或空表即恢复等概率。
   状态常量 `IDLE` / `DRAGGED` / `WANDER` / `STROLL` / `AWAKE`，分类到状态的映射见 `_STATE_NAMES`
   （默认取分类名大写，`walk → WANDER`、`stroll → STROLL` 是特例）。几个「插播式」触发点：
   - `showup`：启动后首次露面（`main._start_ui`）与从贴边隐藏恢复（`_on_edge_hidden_changed`）
     各播一次，播完再补一个 `surprise` 然后回待机。它只占 `auto` 级，不挡用户点击 / 模块通知。
   - `awake`：睡觉中被任何请求打断时插播一次（`request()` 检测到从 `sleep` 出来，
     `_to_idle()` 那条路走同一个入口），最多 8s 后回待机（可循环素材也靠这个计时兜底）。
-  - `think`：番茄钟专注期间 `main._sync_focus_mood()` 用 `set_idle_category("think")` 把待机素材
+  - `think`：番茄钟专注期间 `main._sync_life()` 用 `set_idle_category("think")` 把待机素材
     换掉，退出专注换回 `idle`；待机态没结束时会自愈（`_to_idle()` 用的就是当前 `_idle_category`）。
+    上班（手动或番茄钟联动）也算「在忙」，共用这条切换。
   - `move`：拖拽时播（`on_drag_started`）；没这个分类的素材则定格当前一帧。
   - `sport`：久坐提醒触发时播（`modules/health_reminder.py` 的 SIT 表情分类）。
 - **贴边隐藏** `pet/edge_hide.py`：拖到屏幕左右边缘松手即缩进屏幕外，只露 **24px** 桔子窄条
@@ -145,6 +153,18 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 - **气泡跟随**：`main` 里 `_follow_toast` 订阅 `Sprite.moved`（只在坐标真变时发），
   拖拽 / 自主走动 / 散步 / 贴边滑出等**所有**位移场景都会同步气泡。
   不要在各个交互函数里分别补气泡位置——加一处新的位移逻辑时容易漏。
+- **生活系统（数值 + 噜噜币）拆成两个模块**，`main` 是唯一的牵线人：
+  - `modules/vitals.py`（心情 / 活力 / 饱腹）与 `modules/economy.py`（噜噜币 / 上班）**互不 import**；
+    上班→衰减翻倍、食物→补数值、币→扣减这三处耦合全在 `main._sync_life()` / `_buy_food()` 里连。
+  - `main._sync_life()` 由模块心跳（1s）与各交互入口调用：番茄钟专注 → `economy.set_focus()`，
+    上班状态 → `vitals.set_working()`，「在忙」（专注或上班）→ 待机切 `think`，数值偏低 → 行为机加权表。
+    它取代了旧的 `_sync_focus_mood()`。
+  - `main._update_status()` 把两个模块的 `status_text()` 用 `" · "` 拼进托盘悬停，避免互相覆盖。
+  - `behavior.state_changed` → `main._on_behavior_state()` 把「是否在睡觉」告诉 vitals（睡着活力回升）。
+  - **持运行时状态的模块要实现 `Module.sync_config()`**：设置面板保存会**整份覆盖** `self.config`，
+    `_apply_settings()` 在 `_save_config()` 前统一调一遍 `sync_config()`，把当下的数值 / 币补回去，
+    否则会被面板打开时的旧快照顶掉。`mood` / `energy` / `satiety` / `coins` 允许为 0，
+    所以在 `pet/config.py` 的 `_SPECIAL` 里注册了专门校验器（`_valid_scalar` 要求默认值 `> 0`，0 会判非法）。
 - **`setWindowFlags()` 在 Windows 上会销毁重建窗口**（穿透模式切换会用到）：
   调用后必须显式 `show()` 一次，否则噜噜会从桌面消失。
 - **自动更新**：见下面「自动更新」小节。
@@ -203,8 +223,8 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 ## 常用命令
 
 ```powershell
-cd capybara_pet
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 317 项且退出码 0（本机不打印汇总行）
+cd momolulu
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 370 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
@@ -234,12 +254,20 @@ python tools_cli/assign.py assets/assign.csv --prune      # 按清单落盘，�
 - **新表情的触发时机**：启动 / 从贴边隐藏恢复播 `showup`（随后补一个 `surprise`）；
   睡觉被叫醒先播 `awake`；番茄钟专注期间待机素材换成 `think`；久坐提醒触发时播 `sport`；
   拖拽时播 `move`（没有该素材则定格当前帧）；`cry` / `anxious` / `surprise` 也进了待机随机小动作池。
+- **生活系统数值**：心情 / 活力 / 饱腹三项 0~100，**在线时**按小时衰减（心情 6、活力 8、饱腹 10），
+  睡觉时活力改为 +30/h，上班时心情 / 活力衰减 ×2（饱腹不受影响）。跌破 10 冒一次泡（回到 30 以上才重新武装）。
+  数值偏低时待机小动作更偏负面情绪（`sad` / `cry` / `anxious` 加权，软影响，不强制）。
+- **噜噜币 / 上班**：右键菜单「照顾噜噜 ▸ 上班 / 下班」手动开关，或番茄钟专注时自动联动（两者「或」）。
+  上班按 1 币/分钟进账，时长越长赚越多；上班时待机素材切 `think`，托盘悬停显示「上班中 · 已赚 N 噜噜币」。
+- **商店喂食**：右键菜单「照顾噜噜 ▸ 喂食」用噜噜币买：冰淇淋 10→+10 饱腹 & 心情、蛋糕 20→+20、
+  汉堡 30→+30（越贵补得越多），买不起的项置灰。「照顾噜噜 ▸ 哄睡」直接把噜噜哄睡（睡着活力回升）。
 - **提醒模块默认值**：`pomodoro` 关、`health_reminder` 开（喝水 45min / 久坐 60min）、
-  `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关。
+  `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关；`vitals` / `economy` 均开（初始 80/80/80、0 币）。
 
 ## 待办 / 未决
 
-1. 待机小动作是否加权（目前 `walk` / `sad` / `bath` / `cry` / `anxious` / `surprise` 等概率六选一）。
+1. 待机小动作加权已落地（数值偏低时由 `vitals.action_weights()` 给行为机权重表，软影响）；
+   是否还要给「上班 / 专注」再叠一层权重、以及各食物是否要差异化加成（目前按价线性）尚未定。
 2. `docs/superpowers/` 下 **2026-10-20 那份 spec / plan 是改名前的旧描述**（`lulu_pet`、
    悬停滑出 + 3s 缩回、48px 桔子条、双击打开设置），**尚未回写**，读的时候注意甄别；
    2026-10-21 那份（`2026-10-21-auto-update*`）是自动更新这一版，与代码一致。
@@ -265,19 +293,18 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 317 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 370 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。
 想省事就直接把 [`docs/handoff-prompt.md`](handoff-prompt.md) 里「## 提示词」一节整段贴进新会话
 （它已把「先读哪些文件 / 怎么验收 / 哪些不许擅自做」写好，只在末尾补一句本轮要做什么）。
 
-以上假定「当前进度」那批改动**已经提交并推送**。还没提交的话，新机器 clone 到的是 `0.2.4` 的旧代码：
-测试期望值仍是 308 项、素材还是旧的 12 张、`assign.py` 与 8 个新分类都不存在。
-
 注意：**Trae 的对话历史不在仓库里**——它由客户端 / 云端账号管理，本机没有可搬运的会话文件
 （已确认 `%APPDATA%\Trae\User\workspaceStorage\` 下没有 chatSessions 之类的记录）。
 跨设备靠的是"仓库 + 本交接文档"，或在新客户端登录同一 Trae 账号看账号下的历史会话。
+新机器 clone 到的是 `0.2.6`；「当前进度」那批生活系统改动**只有提交推送后**才会跟着走，
+否则新机器上 `modules/vitals.py`、`modules/economy.py` 与对应测试都不存在。
 
 ## 自动更新
 

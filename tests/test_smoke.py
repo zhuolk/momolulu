@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import copy
+
 from PIL import Image
 from PyQt5.QtCore import QPoint, QTimer
 from PyQt5.QtWidgets import QApplication
@@ -11,7 +13,7 @@ import main as pet_main
 from main import PetApp
 from pet.behavior import PRIORITY_AUTO, STROLL, WANDER
 from pet.catalog import default_categories, save_categories
-from pet.config import DEFAULTS, save_config
+from pet.config import DEFAULTS, load_config, save_config
 from pet.stroll import STROLL_SPEED_PX
 from pet.wander import WALK_SPEED_PX
 from ui.toast import ANCHOR_GAP
@@ -207,4 +209,77 @@ def test_module_notify_still_toasts(qapp, tmp_path):
     app._module_notify("该喝水啦", "drink")
     assert app.toast.isVisible() is True
     assert app.toast.current_text == "该喝水啦"
+    app.shutdown()
+
+
+# ---------------------------------------------------------------- 生活系统接线
+
+
+def test_status_line_combines_vitals_and_coins(qapp, tmp_path):
+    """托盘悬停由宿主把两个模块的片段拼起来，谁也不会覆盖谁。"""
+    app = PetApp(root=build_root(tmp_path))
+    seen = []
+    app._set_tray_text = seen.append
+    app._update_status()
+    assert seen == ["心情 80 · 活力 80 · 饱腹 80 · 噜噜币 0"]
+    app.shutdown()
+
+
+def test_buy_food_spends_coins_and_feeds_the_pet(qapp, tmp_path):
+    root = build_root(tmp_path)
+    cfg = load_config(root / "config.json")
+    cfg["modules"]["economy"]["coins"] = 100
+    cfg["modules"]["vitals"].update({"satiety": 50, "mood": 50})
+    save_config(root / "config.json", cfg)
+
+    app = PetApp(root=root)
+    app._menu_handlers()["buy_food"]("burger")
+
+    assert app.modules["economy"].coins == 70      # 100 - 30
+    assert app.modules["vitals"].satiety == 80     # 50 + 30
+    assert app.modules["vitals"].mood == 80
+    app.shutdown()
+
+
+def test_buy_food_without_coins_changes_nothing(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    before = app.modules["vitals"].satiety
+    app._menu_handlers()["buy_food"]("ice_cream")
+    assert app.modules["economy"].coins == 0
+    assert app.modules["vitals"].satiety == before
+    app.shutdown()
+
+
+def test_work_toggle_drives_economy_and_working_decay(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    handlers = app._menu_handlers()
+
+    handlers["toggle_work"](True)
+    assert app.modules["economy"].working is True
+    assert app.modules["vitals"]._working is True  # 上班时心情 / 活力衰减加倍
+
+    handlers["toggle_work"](False)
+    assert app.modules["economy"].working is False
+    assert app.modules["vitals"]._working is False
+    app.shutdown()
+
+
+def test_soothe_puts_the_pet_to_sleep(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    app._menu_handlers()["soothe"]()
+    assert app.behavior.state == "SLEEP"
+    assert app.modules["vitals"]._sleeping is True  # 睡着时活力改为回升
+    app.shutdown()
+
+
+def test_apply_settings_keeps_runtime_vitals(qapp, tmp_path):
+    """设置面板保存会整份覆盖配置，靠 `sync_config` 把运行时数值补回去。"""
+    app = PetApp(root=build_root(tmp_path))
+    stale = copy.deepcopy(app.config)  # 面板打开时的旧快照
+    app.modules["vitals"].feed(satiety=10, mood=10)  # 80 → 90
+
+    app._apply_settings(stale)
+
+    assert app.config["modules"]["vitals"]["satiety"] == 90
+    assert app.config["modules"]["vitals"]["mood"] == 90
     app.shutdown()

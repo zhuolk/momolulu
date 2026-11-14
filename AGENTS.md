@@ -27,7 +27,7 @@
 
 ## 测试
 
-- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **317** 个用例）。
+- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **370** 个用例）。
 - 本机 **不打印 `N passed` 汇总行**，判断全绿看**退出码是否为 0**；
   用例数用 `--collect-only -q -p no:cacheprovider` 逐文件求和交叉确认。
 - 加 `-p no:cacheprovider` 避免在仓库留下 `.pytest_cache`。

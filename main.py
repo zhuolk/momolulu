@@ -16,10 +16,12 @@ from PyQt5.QtWidgets import QApplication, QMenu
 import modules.health_reminder  # noqa: F401  导入即注册进 MODULE_CLASSES
 import modules.hourly_chime  # noqa: F401  导入即注册进 MODULE_CLASSES
 import modules.meal_reminder  # noqa: F401  导入即注册进 MODULE_CLASSES
+import modules.vitals  # noqa: F401  导入即注册进 MODULE_CLASSES
 from modules.base import ModuleContext, build_modules
+from modules.economy import FOOD_BY_KEY, FOODS  # noqa: F401 - 导入即把 Economy 注册进 MODULE_CLASSES
 from modules.pomodoro import FOCUS  # noqa: F401 - 导入即把 Pomodoro 注册进 MODULE_CLASSES
 from pet.autostart import default_command, set_enabled, sync
-from pet.behavior import PRIORITY_MODULE, STROLL, WANDER, Behavior
+from pet.behavior import PRIORITY_MODULE, SLEEP, STROLL, WANDER, Behavior
 from pet.catalog import load_categories, pick
 from pet.config import load_config, save_config
 from pet.edge_hide import EdgeHider
@@ -179,6 +181,7 @@ class PetApp:
         self.sprite.play_finished.connect(self.behavior.on_play_finished)
         self.sprite.right_clicked.connect(self._on_right_clicked)
         self.sprite.moved.connect(self._follow_toast)
+        self.behavior.state_changed.connect(self._on_behavior_state)
         self.edge_hider.hidden_changed.connect(self._on_edge_hidden_changed)
         self.app.screenAdded.connect(self._on_screens_changed)
         self.app.screenRemoved.connect(self._on_screens_changed)
@@ -223,6 +226,8 @@ class PetApp:
 
     def _menu_state(self) -> MenuState:
         pomodoro = self.modules.get("pomodoro")
+        economy = self.modules.get("economy")
+        coins = int(economy.coins) if economy is not None else 0
         info = self._update_info
         pending = info.get("version") if isinstance(info, dict) and info.get("package") else None
         return MenuState(
@@ -232,6 +237,11 @@ class PetApp:
             modules=self._module_flags(),
             pomodoro_running=bool(getattr(pomodoro, "running", False)),
             update_version=pending,
+            working=bool(economy.working) if economy is not None else False,
+            foods=tuple(
+                (key, label, price, coins >= price)
+                for key, label, price, _satiety, _mood in FOODS
+            ),
         )
 
     def _build_menu(self) -> QMenu:
@@ -244,6 +254,9 @@ class PetApp:
             "toggle_module": self._toggle_module,
             "pomodoro": self._pomodoro,
             "stroll": self._start_stroll,
+            "toggle_work": self._toggle_work,
+            "soothe": self._soothe,
+            "buy_food": self._buy_food,
             "open_settings": self._open_settings,
             "toggle_autostart": self._toggle_autostart,
             "update_now": self._update_now,
@@ -317,6 +330,41 @@ class PetApp:
         if not started:
             self.behavior.on_stroll_finished()
 
+    # ------------------------------------------------------------ 照顾噜噜
+
+    def _toggle_work(self, on: bool) -> None:
+        """照顾噜噜 ▸ 上班 / 下班：手动开关上班（与番茄钟联动是「或」的关系）。"""
+        economy = self.modules.get("economy")
+        if economy is None:
+            return
+        if on:
+            economy.start_work()
+            self._show_toast("噜噜去上班啦，努力赚噜噜币～")
+        else:
+            economy.stop_work()
+            self._show_toast("噜噜下班啦，辛苦咯～")
+        self._sync_life()
+
+    def _soothe(self) -> None:
+        """照顾噜噜 ▸ 哄睡：直接把噜噜哄睡（睡着时活力回升）。"""
+        self._show_toast("拍拍噜噜，乖乖睡觉～")
+        self.behavior.request("sleep", PRIORITY_MODULE, once=False)
+
+    def _buy_food(self, key: str) -> None:
+        """照顾噜噜 ▸ 喂食 ▸ 某食物：先扣币，再让数值模块补饱腹与心情。"""
+        economy = self.modules.get("economy")
+        vitals = self.modules.get("vitals")
+        food = FOOD_BY_KEY.get(key)
+        if economy is None or vitals is None or food is None:
+            return
+        _, label, price, satiety, mood = food
+        if not economy.spend(price):
+            self._show_toast("噜噜币不够啦，先去上班赚一点吧～")
+            return
+        vitals.feed(satiety=satiety, mood=mood)
+        self._module_notify(f"噜噜吃了{label}，好满足～", "eat")
+        self._sync_life()
+
     def _open_settings(self) -> None:
         """打开设置面板；保存后立即生效。"""
         dialog = SettingsDialog(self.config, self.sprite)
@@ -327,7 +375,6 @@ class PetApp:
         """把面板返回的配置原地写回（保持其他组件持有的引用不失效）。"""
         self.config.clear()
         self.config.update(new_config)
-        self._save_config()
         for name, module in self.modules.items():
             node = self.config["modules"].get(name, {})
             if name == "health_reminder":  # 整体开关跟随两个子开关
@@ -336,10 +383,15 @@ class PetApp:
                 want = bool(node.get("enabled", module.default_enabled))
             if module.enabled != want:
                 module.set_enabled(want)
+        # 面板打开时拷贝了一份配置快照，持运行时状态的模块要把当下的值补回去
+        for module in self.modules.values():
+            module.sync_config()
+        self._save_config()
         pet = self.config.get("pet", {})
         self.sprite.set_always_on_top(bool(pet.get("always_on_top", True)))
         self.sprite.reload()  # 缩放可能已改变，重建影片缓存
         self._autostart = sync(bool(self.config.get("autostart", False)), self._autostart_command)
+        self._sync_life()
 
     def _toggle_autostart(self) -> None:
         want = not self._autostart
@@ -401,6 +453,12 @@ class PetApp:
         if not hidden:
             self.behavior.play_showup()
 
+    def _on_behavior_state(self, state: str) -> None:
+        """把「是否在睡觉」告诉数值模块：睡着时活力改为回升。"""
+        vitals = self.modules.get("vitals")
+        if vitals is not None:
+            vitals.set_sleeping(state == SLEEP)
+
     def _play_showup(self) -> None:
         """启动后第一次露面：播一次 `showup`（随后由行为机接一个 `surprise`）。"""
         self.behavior.play_showup()
@@ -416,6 +474,7 @@ class PetApp:
             self._save_config,
         )
         self.modules = build_modules(ctx)
+        self._sync_life()  # 先摆好初始状态（待机素材 / 托盘提示）
         self._module_timer.start()
 
     def _save_config(self) -> None:
@@ -441,10 +500,16 @@ class PetApp:
         for module in self.modules.values():
             if module.enabled:
                 module.tick(now)
-        self._sync_focus_mood()
+        self._sync_life()
 
-    def _sync_focus_mood(self) -> None:
-        """番茄钟专注期间让噜噜一直「思考」（待机素材换成 `think`），退出专注再换回来。"""
+    def _sync_life(self) -> None:
+        """把番茄钟 / 上班 / 数值三方在宿主这里牵线（模块之间不互相引用）。
+
+        - 番茄钟专注联动上班；
+        - 上班状态推给数值模块（心情 / 活力衰减加倍）；
+        - 专注或上班都算「在忙」，待机素材换成 `think`；
+        - 数值偏低时给行为机一张权重表（软影响待机小动作）。
+        """
         pomodoro = self.modules.get("pomodoro")
         focusing = bool(
             pomodoro is not None
@@ -452,10 +517,34 @@ class PetApp:
             and pomodoro.running
             and pomodoro.phase == FOCUS
         )
-        if focusing == self._focus_playing:
-            return
-        self._focus_playing = focusing
-        self.behavior.set_idle_category("think" if focusing else "idle")
+        economy = self.modules.get("economy")
+        if economy is not None:
+            economy.set_focus(focusing)
+        working = bool(economy is not None and economy.working)
+        vitals = self.modules.get("vitals")
+        if vitals is not None:
+            vitals.set_working(working)
+        busy = focusing or working
+        if busy != self._focus_playing:
+            self._focus_playing = busy
+            self.behavior.set_idle_category("think" if busy else "idle")
+        self._sync_action_weights()
+        self._update_status()
+
+    def _sync_action_weights(self) -> None:
+        """数值模块给出的权重表推给行为机；模块停用或状态良好时为 `None`（等概率）。"""
+        vitals = self.modules.get("vitals")
+        weights = vitals.action_weights() if vitals is not None and vitals.enabled else None
+        self.behavior.set_action_weights(weights)
+
+    def _update_status(self) -> None:
+        """托盘悬停：数值一段 + 噜噜币 / 上班一段，由宿主拼起来（避免两个模块互相覆盖）。"""
+        parts = []
+        for key in ("vitals", "economy"):
+            module = self.modules.get(key)
+            if module is not None and module.enabled:
+                parts.append(module.status_text())
+        self._set_tray_text(" · ".join(parts))
 
     # ------------------------------------------------------------ 自动更新
 
@@ -624,6 +713,7 @@ class PetApp:
             (self.sprite.play_finished, self.behavior.on_play_finished),
             (self.sprite.right_clicked, self._on_right_clicked),
             (self.sprite.moved, self._follow_toast),
+            (self.behavior.state_changed, self._on_behavior_state),
             (self.edge_hider.hidden_changed, self._on_edge_hidden_changed),
             (self.app.screenAdded, self._on_screens_changed),
             (self.app.screenRemoved, self._on_screens_changed),

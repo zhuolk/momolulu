@@ -64,6 +64,13 @@ class Module:
     def tick(self, now: datetime) -> None:
         """宿主定时驱动（子类覆写）。"""
 
+    def sync_config(self) -> None:
+        """把模块的运行时状态写回 `ctx.config`（默认无状态，子类按需覆写）。
+
+        设置面板保存时会整份覆盖 `self.config`，持有运行时状态的模块要借这个钩子
+        把当下的值补回去，否则会被面板打开时的旧快照顶掉。
+        """
+
     def set_enabled(self, on: bool) -> None:
         """切换开关：幂等（状态未变则直接返回）、写配置并落盘。"""
         on = bool(on)

@@ -33,6 +33,8 @@ class MenuState:
         modules: dict,
         pomodoro_running: bool,
         update_version: str | None = None,
+        working: bool = False,
+        foods: tuple = (),
     ):
         self.visible = bool(visible)
         self.passthrough = bool(passthrough)
@@ -40,6 +42,9 @@ class MenuState:
         self.modules = dict(modules)
         self.pomodoro_running = bool(pomodoro_running)
         self.update_version = update_version or None
+        self.working = bool(working)
+        # (key, 文案, 价格, 是否买得起)
+        self.foods = tuple(foods)
 
 
 # ------------------------------------------------------------------ 回调适配
@@ -117,6 +122,20 @@ def build_menu(parent, state: MenuState, handlers) -> QMenu:
 
     interact = menu.addMenu("搞搞震")
     interact.addAction("散步").triggered.connect(_slot(handlers, "stroll"))
+
+    menu.addSeparator()
+
+    care = menu.addMenu("照顾噜噜")
+    feed = care.addMenu("喂食")
+    for key, label, price, affordable in state.foods:
+        action = feed.addAction(f"{label}（{price} 噜噜币）")
+        action.setEnabled(bool(affordable))
+        action.triggered.connect(_slot(handlers, "buy_food", key))
+    care.addAction("哄睡").triggered.connect(_slot(handlers, "soothe"))
+    work = care.addAction("上班 / 下班")
+    work.setCheckable(True)
+    work.setChecked(state.working)
+    work.toggled.connect(lambda on: _call(handlers, "toggle_work", bool(on)))
 
     menu.addSeparator()
 
