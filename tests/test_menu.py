@@ -24,6 +24,7 @@ class Handlers:
         self.toggle_work = lambda on: self.calls.append(("work", on))
         self.soothe = lambda: self.calls.append(("soothe",))
         self.buy_food = lambda key: self.calls.append(("buy_food", key))
+        self.show_status = lambda: self.calls.append(("show_status",))
 
 
 MODS = {"pomodoro": False, "water": True, "sit": True, "meal": True, "hourly": False}
@@ -137,6 +138,17 @@ def test_tray_pops_menu_on_context_activation_only(qapp):
     assert actions(tray.menu)["退出"] is not None
 
 
+def test_tray_emits_clicked_on_trigger_only(qapp):
+    """左键单击发 `clicked`（用来弹状态卡），右键不发。"""
+    tray, _ = make_tray(qapp)
+    hits = []
+    tray.clicked.connect(lambda: hits.append(True))
+    tray._tray.activated.emit(QSystemTrayIcon.Trigger)
+    assert hits == [True]
+    tray._tray.activated.emit(QSystemTrayIcon.Context)
+    assert hits == [True]
+
+
 def test_tray_popup_menu_returns_false_without_factory_result(qapp):
     tray = Tray(qapp, QIcon(), lambda: None)
     assert tray.popup_menu() is False and tray.menu is None
@@ -200,6 +212,13 @@ def test_care_submenu_holds_feed_soothe_and_work(qapp):
     )
     care = actions(care_menu(m))
     assert "喂食" in care and "哄睡" in care and "上班 / 下班" in care
+
+
+def test_care_submenu_holds_show_status(qapp):
+    h = Handlers()
+    m = build_menu(None, MenuState(True, False, False, MODS, False), h.__dict__)
+    actions(care_menu(m))["看看状态"].trigger()
+    assert ("show_status",) in h.calls
 
 
 def test_food_items_show_price_and_disable_unaffordable(qapp):

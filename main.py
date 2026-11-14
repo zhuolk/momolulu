@@ -35,6 +35,7 @@ from pet.wander import Wanderer
 from pet.winutil import acquire_single_instance, is_foreground_fullscreen, should_hide_pet
 from ui.menu import MenuState, build_menu
 from ui.settings_dialog import SettingsDialog
+from ui.status_card import StatusCard
 from ui.toast import Toast
 from ui.update_prompt import UpdatePrompt
 
@@ -131,6 +132,7 @@ class PetApp:
             bounds_provider=self._work_areas,
         )
         self.toast = Toast()
+        self.status_card = StatusCard()
 
         self._save_timer = QTimer()
         self._save_timer.setSingleShot(True)
@@ -257,6 +259,7 @@ class PetApp:
             "toggle_work": self._toggle_work,
             "soothe": self._soothe,
             "buy_food": self._buy_food,
+            "show_status": self._show_status_card,
             "open_settings": self._open_settings,
             "toggle_autostart": self._toggle_autostart,
             "update_now": self._update_now,
@@ -268,6 +271,7 @@ class PetApp:
             self.processed_dir, self.catalog, self.root / "assets" / "tray_icon.png"
         )
         self.tray = Tray(self.app, QIcon(str(icon_path)), self._build_menu)
+        self.tray.clicked.connect(self._show_status_card)
         self.tray.show()
 
     def _toggle_visible(self) -> None:
@@ -276,6 +280,7 @@ class PetApp:
         if self.sprite.isVisible():
             self.sprite.hide()
             self.toast.hide()
+            self.status_card.hide()
         else:
             self.sprite.show()
 
@@ -545,6 +550,36 @@ class PetApp:
             if module is not None and module.enabled:
                 parts.append(module.status_text())
         self._set_tray_text(" · ".join(parts))
+        self._refresh_status_card()
+
+    # ------------------------------------------------------------ 状态卡
+
+    def _show_status_card(self, anchor: tuple[int, int] | None = None) -> None:
+        """弹出数值状态卡（托盘左键单击 / 菜单「看看状态」）。"""
+        if not self._fill_status_card():
+            return
+        self.status_card.show_near(*(anchor or self._pet_anchor()))
+
+    def _refresh_status_card(self) -> None:
+        """状态卡开着时跟着心跳刷新（数值每秒都在变）。"""
+        if self.status_card.isVisible():
+            self._fill_status_card()
+
+    def _fill_status_card(self) -> bool:
+        """把两个模块的数值灌进状态卡；模块缺失时返回 False。"""
+        vitals = self.modules.get("vitals")
+        economy = self.modules.get("economy")
+        if vitals is None or economy is None:
+            return False
+        self.status_card.set_state(
+            mood=vitals.mood,
+            energy=vitals.energy,
+            satiety=vitals.satiety,
+            coins=economy.coins,
+            working=economy.working,
+            earned=economy.earned,
+        )
+        return True
 
     # ------------------------------------------------------------ 自动更新
 
@@ -704,6 +739,7 @@ class PetApp:
         self.behavior.stop()
         self._save_timer.stop()
         self.toast.hide()
+        self.status_card.hide()
         self._update_prompt.hide()
         for signal, slot in (
             (self.sprite.drag_moved, self._on_drag_moved),
@@ -717,6 +753,7 @@ class PetApp:
             (self.edge_hider.hidden_changed, self._on_edge_hidden_changed),
             (self.app.screenAdded, self._on_screens_changed),
             (self.app.screenRemoved, self._on_screens_changed),
+            (self.tray.clicked, self._show_status_card),
         ):
             try:
                 signal.disconnect(slot)

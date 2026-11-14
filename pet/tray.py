@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from PIL import Image
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtGui import QCursor, QIcon
 from PyQt5.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -56,6 +56,8 @@ def ensure_tray_icon(processed_dir: Path, catalog_data: dict, out_path: Path) ->
 
 class Tray(QObject):
     """`QSystemTrayIcon` 包装；无托盘环境下 `show()` 返回 False 且不抛异常。"""
+
+    clicked = pyqtSignal()  # 左键单击图标
 
     def __init__(self, app, icon: QIcon, menu_factory: Callable[[], QMenu]):
         super().__init__()
@@ -105,9 +107,11 @@ class Tray(QObject):
     # ------------------------------------------------------------ 内部
 
     def _on_activated(self, reason) -> None:
-        """右键（`Context`）才弹菜单；左键双击等不做处理。"""
+        """右键（`Context`）弹菜单；左键单击（`Trigger`）发信号（用来弹状态卡）。"""
         if reason == QSystemTrayIcon.Context:
             self.popup_menu()
+        elif reason == QSystemTrayIcon.Trigger:
+            self.clicked.emit()
 
     def _forget_menu(self) -> None:
         """菜单关闭后释放，避免每次右键堆一个 QMenu。"""

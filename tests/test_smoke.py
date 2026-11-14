@@ -283,3 +283,45 @@ def test_apply_settings_keeps_runtime_vitals(qapp, tmp_path):
     assert app.config["modules"]["vitals"]["satiety"] == 90
     assert app.config["modules"]["vitals"]["mood"] == 90
     app.shutdown()
+
+
+# ---------------------------------------------------------------- 状态卡接线
+
+
+def test_show_status_card_pops_with_live_numbers(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    app._show_status_card()
+    assert app.status_card.isVisible() is True
+    assert app.status_card.note_text() == "噜噜币 0"
+    app.shutdown()
+
+
+def test_show_status_card_noop_without_both_modules(qapp, tmp_path):
+    """数值 / 经济模块缺一就不弹（避免画一张空卡）。"""
+    app = PetApp(root=build_root(tmp_path))
+    saved = app.modules
+    app.modules = {"vitals": saved["vitals"]}  # 抽掉 economy
+    assert app._fill_status_card() is False
+    app._show_status_card()
+    assert app.status_card.isVisible() is False
+    app.modules = saved
+    app.shutdown()
+
+
+def test_status_card_refreshes_while_visible(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    app._show_status_card()
+    assert app.status_card.note_text() == "噜噜币 0"
+
+    app.modules["economy"]._coins = 55
+    app._update_status()  # 心跳每秒都会调它
+    assert app.status_card.note_text() == "噜噜币 55"
+    app.shutdown()
+
+
+def test_hiding_pet_hides_status_card(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    app._show_status_card()
+    app._toggle_visible()
+    assert app.status_card.isVisible() is False
+    app.shutdown()

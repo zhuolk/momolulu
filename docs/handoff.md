@@ -11,28 +11,27 @@
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.6`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：370 个 pytest 用例全量通过
+- 当前版本：`0.2.7`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：383 个 pytest 用例全量通过
 - 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
 ## 当前进度（本机工作树，**尚未提交**）
 
-仓库最后一次提交是 `1a95310`（发布 `0.2.6`，已推送）。之后在本地攒了一批新功能，**都还没 commit / push**——
+仓库最后一次提交是 `3d12f87`（发布 `0.2.7`，已推送）。之后在本地攒了一批新改动，**还没 commit / push**——
 换电脑继续前先提交推送，否则这些改动不会跟着仓库走：
 
-- **生活数值（`modules/vitals.py`）**：心情 / 活力 / 饱腹三项 0~100，只按「在线时间」衰减（进程没跑的
-  那段不扣，靠持久化接着用）。上班时心情 / 活力衰减翻倍（`work_decay_multiplier`），睡觉时活力改为回升
-  （`energy_sleep_recover_per_hour`）。跌破 `low_threshold` 冒一次泡，回到 `warn_threshold` 以上才重新武装。
-  数值偏低时给行为机一张权重表（`action_weights()`），让待机小动作更偏负面情绪（软影响）。
-- **噜噜币与上班（`modules/economy.py`）**：上班按分钟攒币（`income_per_minute`），上班来源是
-  菜单手动开关与番茄钟专注联动的「或」。币在「照顾噜噜 ▸ 喂食」里买食物（冰淇淋 10 / 蛋糕 20 / 汉堡 30，
-  越贵补的饱腹与心情越多）。食物补数值、上班影响衰减、币扣减三处耦合全部在 `main._sync_life` / `_buy_food` 牵线，
-  **模块之间不互相引用**。
-- 新增 `tests/test_vitals.py`、`tests/test_economy.py`，并补了行为机加权、菜单「照顾噜噜」、配置 0 值校验与
-  `main` 接线（买食物 / 上下班 / 哄睡 / 设置面板不被旧快照顶掉）等用例。**测试 330 → 370**，全绿（退出码 0）。
-- 上一批未提交改动（素材整批替换、`assign.py`、分类 10 → 18、待机间隔放宽到约 1 小时等）已随 `0.2.5` /
-  `0.2.6` 提交推送，下面「架构要点 / 素材规范」里已按现状描述。
+- **状态卡浮窗（`ui/status_card.py`）**：托盘原生悬停提示（`QSystemTrayIcon.setToolTip`）只能一行纯文本，
+  画不出进度条，于是另起一个自绘顶层窗：鼠标穿透、不抢焦点、8 秒后自动收起。卡片用三条彩色进度条展示
+  心情 / 活力 / 饱腹（按阈值变色：<30 红 / <60 黄 / <85 绿 / ≥85 深绿，横向 `QLinearGradient` 渐变填充），
+  底部一行显示噜噜币余额（上班中则改显示本班进账）。弹出入口：**托盘图标左键单击**
+  （`pet/tray.py` 新增 `clicked` 信号）或右键菜单「照顾噜噜 ▸ 看看状态」。
+- `main.py` 新增 `_show_status_card` / `_refresh_status_card` / `_fill_status_card`；心跳 `_update_status()`
+  会在卡片可见时每秒刷新；`_toggle_visible` 与 `shutdown` 都要 `status_card.hide()`。
+- 新增 `tests/test_status_card.py`，并在 `tests/test_menu.py`（托盘 `clicked` 信号 + 「看看状态」）与
+  `tests/test_smoke.py`（状态卡接线）补用例。**测试 370 → 383**，全绿（退出码 0）。
+- 生活数值 / 噜噜币（`modules/vitals.py` / `modules/economy.py`：心情·活力·饱腹按在线时间衰减、上班按分钟
+  进账、商店喂食）已随 `0.2.7` 提交推送，`tests/test_vitals.py` / `tests/test_economy.py` 一并入库。
 
 ## 环境
 
@@ -76,7 +75,8 @@ modules/              功能模块层，统一 enable/tick/disable（见 base.py
   hourly_chime.py     整点报时
   vitals.py           生活数值：心情 / 活力 / 饱腹（按在线时间衰减，低值软影响待机情绪）
   economy.py          噜噜币与上班（按分钟进账 + 商店食物表；扣币与补数值在 main 牵线）
-ui/                   托盘菜单、设置对话框、气泡提示 toast、更新弹窗
+ui/                   托盘菜单、设置对话框、气泡提示 toast、数值状态卡、更新弹窗
+  status_card.py      数值状态卡（自绘进度条浮窗，托盘左键 / 菜单「看看状态」弹出）
   update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
   prepare.py          素材预处理：编号 / md5 去重 / 分类登记（不再去背，见「素材规范」）
@@ -84,7 +84,7 @@ tools_cli/            开发工具（不进产物）
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                370 个用例（pytest，conftest 里提供 qapp fixture）
+tests/                383 个用例（pytest，conftest 里提供 qapp fixture）
 assets/               素材（外置，不打进 exe，当前 26 张 `processed/lulu_001~026.gif`）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词）+ superpowers 下的 spec / plan
@@ -129,6 +129,7 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 - **鼠标穿透双模式**：交互模式可拖拽；穿透模式不拦截鼠标（`winutil` 里改窗口扩展样式）。
 - **托盘**：图标固定由 `lulu_002.gif` 首帧生成 64×64 PNG（`assets/tray_icon.png`，缺失时自动重建）；
   菜单必须用 `QMenu.popup()` 渲染，原生托盘菜单在此环境字体与项渲染异常。
+  左键单击图标（`activated(Trigger)`）发 `Tray.clicked` 信号弹状态卡，右键（`Context`）才弹菜单。
 - **配置**：`config.json` 位于程序目录，运行期自动生成，不入库；结构见 `pet/config.py` 的 `DEFAULTS`
   （默认显示缩放 `pet.scale = 0.5`；设置面板可调范围 0.5~2.0）。已存在的 `config.json` 不会被打包覆盖，
   且深合并时**旧值优先**——直接改 `DEFAULTS` 只对新机器生效。
@@ -153,6 +154,11 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 - **气泡跟随**：`main` 里 `_follow_toast` 订阅 `Sprite.moved`（只在坐标真变时发），
   拖拽 / 自主走动 / 散步 / 贴边滑出等**所有**位移场景都会同步气泡。
   不要在各个交互函数里分别补气泡位置——加一处新的位移逻辑时容易漏。
+- **数值状态卡** `ui/status_card.py`：另一条自绘顶层窗（和 `toast.py` 同套路：
+  `Qt.Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowTransparentForInput` + 半透明 + 不激活），
+  用彩色进度条展示心情 / 活力 / 饱腹。`main._show_status_card()` 弹（托盘左键 / 菜单），
+  `_update_status()`（1s 心跳）在卡片可见时刷新。**托盘原生 tooltip 只能一行纯文本，放不下进度条**，
+  所以别再往 `setToolTip` 里塞可视化。
 - **生活系统（数值 + 噜噜币）拆成两个模块**，`main` 是唯一的牵线人：
   - `modules/vitals.py`（心情 / 活力 / 饱腹）与 `modules/economy.py`（噜噜币 / 上班）**互不 import**；
     上班→衰减翻倍、食物→补数值、币→扣减这三处耦合全在 `main._sync_life()` / `_buy_food()` 里连。
@@ -224,7 +230,7 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 
 ```powershell
 cd momolulu
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 370 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 383 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
@@ -293,7 +299,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 370 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 383 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。

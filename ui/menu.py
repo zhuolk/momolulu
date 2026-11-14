@@ -126,6 +126,7 @@ def build_menu(parent, state: MenuState, handlers) -> QMenu:
     menu.addSeparator()
 
     care = menu.addMenu("照顾噜噜")
+    care.addAction("看看状态").triggered.connect(_slot(handlers, "show_status"))
     feed = care.addMenu("喂食")
     for key, label, price, affordable in state.foods:
         action = feed.addAction(f"{label}（{price} 噜噜币）")
