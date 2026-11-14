@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 DEFAULTS: dict = {
-    "version": 1,
+    "version": 2,
     "pet": {
         "scale": 0.5,
         "pos": None,
@@ -21,7 +21,7 @@ DEFAULTS: dict = {
         "passthrough": False,
         "hide_on_fullscreen": True,
         "state_intervals": {
-            "idle_to_wander": [30, 120],
+            "idle_to_wander": [3300, 3900],
             "idle_to_sleep": 900,
         },
     },
@@ -122,6 +122,26 @@ def validate(cfg: dict) -> dict:
     return _merge_validate(cfg, DEFAULTS, "")
 
 
+def _migrate(cfg: dict) -> dict:
+    """把旧版本配置升到当前版本（就地改传入的 dict，调用方保证那是刚解析出的新对象）。
+
+    只处理「默认值变了、老用户跟着变」这一种迁移：**仍停留在旧默认值的字段**才更新，
+    用户自己调过的值不动；升完写上当前版本号，避免重复迁移。
+    """
+    version = cfg.get("version")
+    if _is_int(version) and version >= DEFAULTS["version"]:
+        return cfg
+    # v1 → v2：待机小动作间隔由 [30, 120] 秒（约 1 分多钟）改为约 1 小时。
+    pet = cfg.get("pet")
+    intervals = pet.get("state_intervals") if isinstance(pet, dict) else None
+    if isinstance(intervals, dict) and intervals.get("idle_to_wander") == [30, 120]:
+        intervals["idle_to_wander"] = copy.deepcopy(
+            DEFAULTS["pet"]["state_intervals"]["idle_to_wander"]
+        )
+    cfg["version"] = DEFAULTS["version"]
+    return cfg
+
+
 def load_config(path: Path) -> dict:
     """读取配置并做深合并 + 校验；文件缺失返回默认，损坏则备份为 `.bad` 后返回默认。"""
     path = Path(path)
@@ -138,7 +158,7 @@ def load_config(path: Path) -> dict:
         return copy.deepcopy(DEFAULTS)
     if not isinstance(data, dict):
         return copy.deepcopy(DEFAULTS)
-    return validate(data)
+    return validate(_migrate(data))
 
 
 def save_config(path: Path, cfg: dict) -> None:

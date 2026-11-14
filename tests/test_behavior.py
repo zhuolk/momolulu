@@ -13,6 +13,14 @@ class FakeSprite:
     def unfreeze(self): self.frozen = False
 
 
+class NoSleepSprite(FakeSprite):
+    """除 `sleep` 外都有素材（线上 `sleep` 分类目前是空的）。"""
+
+    def play(self, category):
+        self.played.append(category)
+        return category != "sleep"
+
+
 class Clock:
     def __init__(self): self.now = datetime(2026, 10, 20, 9, 0, 0)
     def __call__(self): return self.now
@@ -126,7 +134,7 @@ def test_focus_mode_keeps_the_idle_machinery_alive(qapp):
     """换成 `think` 后仍会到点自己触发小动作，不能把待机逻辑冻住。"""
     b, sp, clock = make()
     b.set_idle_category("think")
-    b.force_wander_chance(1.0)
+    b.force_wander_chance(0.0)  # 专测待机小动作：别掷成睡觉
     clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
     b.tick(clock())
     assert b.state in _AUTO_STATES
@@ -176,20 +184,57 @@ def test_play_finished_from_a_stale_category_is_ignored(qapp):
 
 def test_auto_wander_after_interval_and_user_activity_resets_sleep_timer(qapp):
     b, sp, clock = make()
-    b.force_wander_chance(1.0)
+    b.force_wander_chance(0.0)  # 先专测待机小动作：别掷成睡觉
     clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
     b.tick(clock())
     assert b.state in _AUTO_STATES   # 待机小动作：走 / 难过 / 洗澡 / 哭 / 焦虑 / 惊喜
     b.on_user_click(); b.on_play_finished("happy")
+    b.force_wander_chance(1.0)      # 之后固定成「掷到睡觉」，验证 800s 还没到点
     clock.adv(seconds=800); b.tick(clock())
     assert b.state != "SLEEP"      # 用户操作重置了睡眠计时：800s < 900s 不应入睡
 
 
 def test_sleep_after_long_idle(qapp):
+    """待机超过 `idle_to_sleep` 后入睡（把随机判定固定成必睡）。"""
     b, sp, clock = make()
+    b.force_wander_chance(1.0)
     clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_sleep"] + 1)
     b.tick(clock())
-    assert b.state in ("SLEEP",) + _AUTO_STATES
+    assert b.state == "SLEEP"
+
+
+def test_missing_sleep_asset_keeps_the_calm_cadence(qapp):
+    """没有睡觉素材时，不能每 tick 重掷：否则待满 15 分钟后动作会一个接一个连播。"""
+    clock, sp = Clock(), NoSleepSprite()
+    b = Behavior(sp, DEFAULTS, clock=clock)
+    b.start()
+    b.force_wander_chance(0.0)  # 固定成「掷到不睡」
+
+    clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_sleep"] + 1)
+    for _ in range(50):
+        b.tick(clock())
+    assert b.state == "IDLE"  # 仍按 idle_to_wander 的节奏，没有连环换动作
+
+    clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
+    b.tick(clock())
+    assert b.state in _AUTO_STATES
+
+
+def test_auto_action_skips_categories_without_assets(qapp):
+    """抽到的分类没素材（`sad` / `bath` 现在都是空的）就接着抽下一个，不能白等一整个间隔。"""
+    class SparseSprite(FakeSprite):
+        def play(self, category):
+            self.played.append(category)
+            return category == "walk"
+
+    clock, sp = Clock(), SparseSprite()
+    b = Behavior(sp, DEFAULTS, clock=clock)
+    b.start()
+    b.force_wander_chance(0.0)  # 别掷成睡觉
+
+    clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
+    b.tick(clock())
+    assert b.state == "WANDER"
 
 
 def test_stop_freezes_transitions(qapp):

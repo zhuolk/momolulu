@@ -185,9 +185,11 @@ class Behavior(QObject):
 
         idle_seconds = (now - self._last_user_activity).total_seconds()
         if idle_seconds >= self._sleep_after():
-            if self._chance(_SLEEP_CHANCE):
-                self.request("sleep", PRIORITY_AUTO, once=False)
-            else:
+            if self._chance(_SLEEP_CHANCE) and self.request("sleep", PRIORITY_AUTO, once=False):
+                return
+            # 掷到不睡、或压根没有睡觉素材（`request` 返回 False）：按常规节奏走小动作。
+            # 「到点就无脑动一下」加上每 tick 重掷，会让动作一个接一个连播（看着像抽搐）。
+            if now >= self._next_auto_at:
                 self._auto_action(now)
             return
         if now >= self._next_auto_at:
@@ -200,8 +202,15 @@ class Behavior(QObject):
         self._wander_chance = float(p)
 
     def _auto_action(self, now: datetime) -> None:
-        self.request(self._rng.choice(_AUTO_ACTIONS), PRIORITY_AUTO, once=True)
+        """做一次待机小动作。
+
+        抽到的分类没素材（`sad` / `bath` 目前是空的）就接着抽下一个，否则这一轮会白等
+        一整个 `idle_to_wander` 间隔什么都不发生。间隔先排上，避免每一 tick 重来。
+        """
         self._next_auto_at = now + timedelta(seconds=self._wander_gap())
+        for category in self._rng.sample(_AUTO_ACTIONS, len(_AUTO_ACTIONS)):
+            if self.request(category, PRIORITY_AUTO, once=True):
+                return
 
     def _insert_awake(self, max_ms: int) -> None:
         """刚睡醒：插播一次「醒觉」，播完（或到时）再回待机。

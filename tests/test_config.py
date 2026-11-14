@@ -12,7 +12,7 @@ def test_defaults_match_spec():
         "hourly_chime",
     }
     assert DEFAULTS["modules"]["meal_reminder"]["times"] == ["12:00", "18:30"]
-    assert DEFAULTS["pet"]["state_intervals"] == {"idle_to_wander": [30, 120], "idle_to_sleep": 900}
+    assert DEFAULTS["pet"]["state_intervals"] == {"idle_to_wander": [3300, 3900], "idle_to_sleep": 900}
     assert DEFAULTS["modules"]["health_reminder"]["enabled"] is True
     assert DEFAULTS["modules"]["pomodoro"]["enabled"] is False
 
@@ -70,6 +70,34 @@ def test_save_load_roundtrip_and_no_temp_left(tmp_path):
     save_config(p, cfg)
     assert load_config(p)["pet"]["scale"] == 1.5
     assert [f.name for f in tmp_path.iterdir()] == ["c.json"]
+
+
+def test_load_migrates_old_default_interval(tmp_path):
+    """v1 配置里仍停留在旧默认值的待机间隔，载入时跟着新默认值走（约 1 小时）。"""
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({"version": 1, "pet": {"state_intervals": {
+        "idle_to_wander": [30, 120], "idle_to_sleep": 900}}}, ensure_ascii=False))
+    cfg = load_config(p)
+    assert cfg["pet"]["state_intervals"]["idle_to_wander"] == [3300, 3900]
+    assert cfg["version"] == DEFAULTS["version"]
+
+
+def test_load_migration_keeps_user_custom_interval(tmp_path):
+    """用户自己调过的待机间隔不受迁移影响，只把版本号升上去。"""
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({"version": 1, "pet": {"state_intervals": {
+        "idle_to_wander": [60, 300], "idle_to_sleep": 900}}}, ensure_ascii=False))
+    cfg = load_config(p)
+    assert cfg["pet"]["state_intervals"]["idle_to_wander"] == [60, 300]
+    assert cfg["version"] == DEFAULTS["version"]
+
+
+def test_migration_runs_only_once(tmp_path):
+    """已是当前版本的配置不再被迁移（一次性）：旧值原样保留、由用户自己负责。"""
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({"version": DEFAULTS["version"], "pet": {"state_intervals": {
+        "idle_to_wander": [30, 120], "idle_to_sleep": 900}}}, ensure_ascii=False))
+    assert load_config(p)["pet"]["state_intervals"]["idle_to_wander"] == [30, 120]
 
 
 def test_get_dotted():
