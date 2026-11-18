@@ -27,7 +27,7 @@ def test_fires_at_noon_once(qapp):
     m, notes, clock, _ = make()
     clock.set(hour=12, minute=0, second=0)
     m.tick(clock())
-    assert notes == [("12:00 到啦，该吃饭咯", "eat")]
+    assert notes == [("12:00 到啦，该吃饭咯", "anxious")]
     clock.set(minute=1)
     m.tick(clock())
     assert len(notes) == 1

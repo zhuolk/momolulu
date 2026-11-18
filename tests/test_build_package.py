@@ -42,6 +42,32 @@ def test_stage_assets_skips_raw_and_dev_only_files(tmp_path):
     assert got == ["categories.json", "processed/lulu_001.gif"]
 
 
+def test_stage_assets_and_manifest_skip_disabled_assets(tmp_path):
+    """标为不启用的素材既不进产物目录，也不进更新清单。"""
+    assets = tmp_path / "assets"
+    (assets / "processed").mkdir(parents=True)
+    (assets / "processed" / "lulu_001.gif").write_bytes(b"keep")
+    (assets / "processed" / "lulu_002.gif").write_bytes(b"drop")
+    (assets / "categories.json").write_text(
+        json.dumps(
+            {
+                "version": 4,
+                "categories": {
+                    "idle": {"files": ["lulu_001.gif", "lulu_002.gif"], "track": "auto"}
+                },
+                "enabled": {"lulu_002.gif": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    stage_assets(tmp_path, tmp_path / "dist")
+
+    staged = tmp_path / "dist" / "momolulu" / "assets" / "processed"
+    assert [p.name for p in sorted(staged.glob("*.gif"))] == ["lulu_001.gif"]
+    assert set(asset_manifest(assets)) == {"processed/lulu_001.gif", "categories.json"}
+
+
 def test_asset_manifest_keys_are_relative_to_assets(tmp_path):
     (tmp_path / "processed").mkdir()
     (tmp_path / "processed" / "lulu_001.gif").write_bytes(b"gif")

@@ -1,6 +1,16 @@
-"""状态卡：数值条配色分档、底部备注、定位夹取与重绘。"""
+"""状态卡：数值条配色分档、图标、底部备注、定位夹取与重绘。"""
 
-from ui.status_card import StatusCard, StatusHeader, card_height, header_height, level_color
+from PyQt5.QtCore import QPointF
+
+from ui.status_card import (
+    ROWS,
+    StatusCard,
+    StatusHeader,
+    card_height,
+    header_height,
+    icon_parts,
+    level_color,
+)
 
 RED = "#e5484d"
 AMBER = "#f5a524"
@@ -29,13 +39,13 @@ def test_card_height_wraps_fixed_size(qapp):
 def test_note_text_shows_balance_when_idle(qapp):
     card = StatusCard()
     card.set_state(mood=80, energy=80, satiety=80, coins=42.7, working=False, earned=0)
-    assert card.note_text() == "噜噜币 42"
+    assert card.note_text() == "42"
 
 
 def test_note_text_shows_earnings_while_working(qapp):
     card = StatusCard()
     card.set_state(mood=80, energy=80, satiety=80, coins=42.7, working=True, earned=15)
-    assert card.note_text() == "上班中 · 已赚 15 噜噜币"
+    assert card.note_text() == "上班中 · 已赚 15"
 
 
 def test_show_near_makes_card_visible(qapp):
@@ -62,10 +72,36 @@ def test_set_state_redraws_visible_card_without_error(qapp):
     card.hide()
 
 
+def test_every_vital_row_has_an_icon():
+    """三行数值都要有对应的小图标（新增一行却忘了画图标会在这里挂）。"""
+    for key in ROWS:
+        parts = icon_parts(key, 0.0, 0.0)
+        assert parts and all(path.isEmpty() is False for path, _ in parts)
+    assert icon_parts("unknown", 0.0, 0.0) == []
+
+
+def test_icons_are_fixed_colored():
+    """图标是固定彩色：每段都带色值，饱腹是三层拼色的汉堡。"""
+    for key in ROWS:
+        assert all(colour.startswith("#") for _, colour in icon_parts(key, 0.0, 0.0))
+    satiety = icon_parts("satiety", 0.0, 0.0)
+    assert len(satiety) == 3
+    assert len({colour for _, colour in satiety}) == 2  # 上下面包同色 + 肉饼一色
+
+
+def test_coin_icon_is_a_holed_star_coin():
+    """噜噜币图标：一枚挖空五角星的圆片（中心必须是空的）。"""
+    parts = icon_parts("coins", 0.0, 0.0)
+    assert len(parts) == 1
+    path, colour = parts[0]
+    assert colour == "#F0B429"
+    assert path.contains(QPointF(0.0, 0.0)) is False
+
+
 def test_header_fixed_size_and_state(qapp):
     """菜单摘要条：固定尺寸、写入数值后可无错重绘。"""
     header = StatusHeader()
     assert header.height() == header_height() and header.width() > 0
     header.set_state(mood=10, energy=95, satiety=45, coins=42.7, working=False, earned=0)
     header.repaint()
-    assert header._values() == [10.0, 95.0, 45.0] and header.note_text() == "噜噜币 42"
+    assert header._values() == [10.0, 95.0, 45.0] and header.note_text() == "42"

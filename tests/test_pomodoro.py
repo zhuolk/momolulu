@@ -37,25 +37,25 @@ def test_starts_idle_and_does_not_notify_before_time():
     assert m.remaining_seconds(clock()) == 60
 
 
-def test_focus_end_notifies_once_and_enters_break():
+def test_focus_end_enters_break_without_notify():
     m, notes, clock, _ = make()
     m.start()
     clock.adv(minutes=25)
     m.tick(clock())
-    assert m.phase == "break" and notes == [("专注完成，休息 5 分钟", "happy")]
+    assert m.phase == "break" and notes == []
     clock.adv(minutes=1)
     m.tick(clock())
-    assert len(notes) == 1
+    assert len(notes) == 0
 
 
-def test_break_end_notifies_and_enters_focus():
+def test_break_end_enters_focus_without_notify():
     m, notes, clock, _ = make()
     m.start()
     clock.adv(minutes=25)
     m.tick(clock())  # 专注结束 → 进入休息
     clock.adv(minutes=5)
     m.tick(clock())  # 休息结束 → 回到专注
-    assert m.phase == "focus" and notes[-1] == ("休息结束，继续专注", "idle")
+    assert m.phase == "focus" and notes == []
 
 
 def test_pause_freezes_remaining_time():

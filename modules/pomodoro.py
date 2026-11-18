@@ -93,27 +93,21 @@ class Pomodoro(Module):
         self._last_tick = self._clock()
 
     def skip(self) -> None:
-        """直接跳到下一相位（不发通知）。"""
+        """直接跳到下一相位。"""
         if self._phase == IDLE:
             self.start()
             return
-        self._switch(BREAK if self._phase == FOCUS else FOCUS, notify=False)
+        self._switch(BREAK if self._phase == FOCUS else FOCUS)
 
     # ------------------------------------------------------------ 内部
 
-    def _switch(self, phase: str, notify: bool = True) -> None:
+    def _switch(self, phase: str) -> None:
         self._phase = phase
         self._remaining = float(
             self._focus_seconds() if phase == FOCUS else self._break_seconds()
         )
         self._last_tick = self._clock()
         self._running = True
-        if not notify:
-            return
-        if phase == BREAK:
-            self.ctx.notify(f"专注完成，休息 {self._break_min()} 分钟", "happy")
-        else:
-            self.ctx.notify("休息结束，继续专注", "idle")
 
     def _consume(self, now: datetime) -> None:
         """把 `now - _last_tick` 折算进剩余时间，并推进计时基准。"""

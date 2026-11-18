@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import QMenu, QSystemTrayIcon
 
 ICON_SIZE = 64
 TOOLTIP = "噜噜"
-TRAY_ASSET = "lulu_002.gif"  # 托盘图标固定取这张素材的首帧
+TRAY_ASSET = "lulu_008.gif"  # 托盘图标固定取这张素材的首帧（原来用 lulu_002，它被标成不启用后换到这张待机图）
 
 
 def find_transparent_asset(processed_dir: Path, catalog_data: dict) -> Path | None:

@@ -316,9 +316,10 @@ def process_gif(
 ) -> dict:
     """处理单个 GIF：缩放 → 抽帧 → 压缩 → 返回统计。
 
-    素材一律要求**预先去背**（自带 alpha）；漏去背的素材直接抛 `ValueError`，
-    既不兜底套卡片轨、也不静默出片。`tol` / `edge_min` 是去背参数，
-    保留给本模块的 `remove_background` / `grade` 等去背函数使用。
+    自带 alpha 的素材走**透明轨**（直接画在桌面上）；没去背的走**卡片轨**——
+    渲染层会套一层圆角卡片把不透明的背景框起来（`pet/sprite.render_frame`）。
+    `tol` / `edge_min` 是去背参数，保留给本模块的 `remove_background` / `grade`
+    等去背函数使用。
     """
     src = Path(src)
     dst = Path(dst)
@@ -328,10 +329,10 @@ def process_gif(
     src_frames, durations = _load_frames(im)
     first_alpha = src_frames[0].getchannel("A").getextrema()[0] < 255
     has_src_alpha = first_alpha or im.info.get("transparency") is not None
-    if not has_src_alpha:
-        raise ValueError(f"{src.name}：素材没有 alpha 通道（未去背），请先去背再放进 raw/")
 
-    track, level = "transparent", "easy"
+    # 自带 alpha → 透明轨；没去背 → 卡片轨（由渲染层套圆角卡片遮掉背景）
+    track, level = ("transparent", "easy") if has_src_alpha else ("card", "hard")
+
     out_frames = src_frames
     cleaned_ratio = 0.0
     edge_ratio = 0.0

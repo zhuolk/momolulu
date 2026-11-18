@@ -11,33 +11,44 @@
 
 - 仓库（**公开**）：<https://github.com/zhuolk/momolulu>
 - 分支：`main` —— 发布直接推 `main`，自动更新只认 `main` 上的 `update/latest.json`
-- 当前版本：`0.2.9`（唯一来源 `pet/version.py` 的 `VERSION`）
-- 测试：396 个 pytest 用例全量通过
-- 打包：`dist/momolulu/`（PyInstaller onedir，约 132.6MB）＋ 分发用 `dist/momolulu-<版本>.zip`（约 54MB），已实机启动验证
+- 当前版本：`0.3.0`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 测试：408 个 pytest 用例全量通过
+- 本地构建：PyInstaller onedir 约 119 MB；分发 zip 约 52 MB。若旧程序占用 dist，可用 `tools_cli/build.py --out <独立目录>`。
 - 已具备自动更新：启动时探测远端 `latest.json`，有新版弹窗征得同意后下载整包自替换（详见「自动更新」）
 
-## 本轮改动（0.2.9）
+## 0.3.0 与近期界面变更
 
 - **界面风格统一**：新增 `ui/theme.py`（调色板 + `draw_card()` + `menu_style()`），
   `ui/toast.py` / `ui/status_card.py` / `ui/update_prompt.py` / `ui/menu.py` 改用它，
   气泡与更新弹窗的圆角、阴影、配色从此跟状态卡一处改、处处变。
-- **右键菜单加数值摘要**：菜单最上面一条 `StatusHeader`（状态卡同款进度条：心情 / 活力 / 饱腹 +
-  噜噜币或本班进账），数据由 `main._menu_state()` 从 `vitals` / `economy` 两个模块取。
+- **右键菜单加数值摘要**：菜单最上面一条 `StatusHeader`（状态卡同款进度条：心情 / 活力 / 饱腹三个
+  小图标 + 进度条 + 噜噜币或本班进账），数据由 `main._menu_state()` 从 `vitals` / `economy` 两个模块取。
 - **踩坑记录**：`QMenu` 的样式表里一旦出现 `border-radius`，本机 `QStyleSheetStyle` 会写坏堆，
   全量测试跑到 `main.py::_start_ui` 的 `sprite.show()` 时整个进程 access violation；
   菜单圆角改用窗口 mask（`ui/menu.CardMenu`）。
-- 测试 383 → **396**（新增 `tests/test_theme.py` 6 项、`tests/test_menu.py` +6、`tests/test_status_card.py` +1）。
+- **状态卡图标改彩色**：`ui/status_card.py` 的 `icon_path()` 换成 `icon_parts()`（返回多段「矢量路径 + 色值」），
+  心情=红心、活力=闪电、饱腹=汉堡、噜噜币=星金币，**固定彩色、不随数值变色**；
+  note 行左侧也画一枚星金币，文字里的「噜噜币」三个字去掉只留数额。
+- **素材管线取消去背硬门槛**：`process_gif()` 按首帧 alpha 分轨，没去背的素材不再抛错，
+  改记成 `card` 轨（渲染层套圆角卡片遮背景），两条轨都收。
+- **素材新增「启用」标记**：`assets/categories.json` 升到 `version 4`，新增顶层 `enabled`
+  （文件名 → bool，缺省视为启用）。`enable=false` 的素材**不参与播放**（`catalog.pick()` 过滤掉）、
+  **打包时跳过**（`build.py` 的 `disabled_assets()` 同时作用于产物目录与 `latest.json` 的 `assets.files`，
+  所以老用户不会被提示下载它；但不会主动删除别人机器上的存量副本）。`assign.py` 清单相应加第 4 列
+  `enable`；托盘图标原固定取 `lulu_002.gif`，它被标成不启用后改用 `lulu_008.gif`。
+- `confuse` 等新分类已接入实际触发点，移除了 `sad`、`bath`、`cry`、`surprise` 及其废弃场景。
 
 ## 最近一批改动（已随 `0.2.8` 提交推送）
 
 - **状态卡浮窗（`ui/status_card.py`）**：托盘原生悬停提示（`QSystemTrayIcon.setToolTip`）只能一行纯文本，
   画不出进度条，于是另起一个自绘顶层窗：鼠标穿透、不抢焦点、8 秒后自动收起。卡片用三条彩色进度条展示
-  心情 / 活力 / 饱腹（按阈值变色：<30 红 / <60 黄 / <85 绿 / ≥85 深绿，横向 `QLinearGradient` 渐变填充），
-  底部一行显示噜噜币余额（上班中则改显示本班进账）。弹出入口：**托盘图标左键单击**
-  （`pet/tray.py` 新增 `clicked` 信号）或右键菜单「照顾噜噜 ▸ 看看状态」。
+  心情 / 活力 / 饱腹（左侧是红心 / 闪电 / 汉堡小图标，`icon_parts()` 矢量自绘、固定彩色、不依赖图片或字体符号；
+  进度条按阈值变色：<30 红 / <60 黄 / <85 绿 / ≥85 深绿，横向 `QLinearGradient` 渐变填充），
+  底部一行是星金币图标 + 噜噜币数额（上班中则改显示本班进账）。弹出入口：**托盘图标左键单击**
+  （`pet/tray.py` 新增 `clicked` 信号）。
 - `main.py` 新增 `_show_status_card` / `_refresh_status_card` / `_fill_status_card`；心跳 `_update_status()`
   会在卡片可见时每秒刷新；`_toggle_visible` 与 `shutdown` 都要 `status_card.hide()`。
-- 新增 `tests/test_status_card.py`，并在 `tests/test_menu.py`（托盘 `clicked` 信号 + 「看看状态」）与
+- 新增 `tests/test_status_card.py`，并在 `tests/test_menu.py`（托盘 `clicked` 信号）与
   `tests/test_smoke.py`（状态卡接线）补用例。**测试 370 → 383**，全绿（退出码 0）。
 - 生活数值 / 噜噜币（`modules/vitals.py` / `modules/economy.py`：心情·活力·饱腹按在线时间衰减、上班按分钟
   进账、商店喂食）随 `0.2.7` 提交推送，`tests/test_vitals.py` / `tests/test_economy.py` 一并入库。
@@ -70,7 +81,7 @@ pet/                  核心层
   wander.py           自主走动（WANDER 期间水平挪 4px/100ms，碰边缘折返 + 镜像转身）
   stroll.py           绕屏散步（STROLL 期间沿工作区边缘逆时针走一圈，四角各转 90°）
   edge_hide.py        贴边隐藏（缩进屏幕外，只露 24px 桔子窄条）
-  tray.py             托盘图标（固定取 lulu_002.gif）+ Qt 托盘菜单
+  tray.py             托盘图标（固定取 lulu_008.gif）+ Qt 托盘菜单
   autostart.py        开机自启（注册表 Run 项，项名 Momolulu）
   winutil.py          Win32 窗口辅助（置顶 / 点击穿透 / 全屏检测）
   version.py          VERSION 常量（发版的唯一版本来源）
@@ -82,20 +93,20 @@ modules/              功能模块层，统一 enable/tick/disable（见 base.py
   health_reminder.py  喝水与久坐提醒（两个独立子开关 + snooze）
   meal_reminder.py    吃饭提醒（时间点列表）
   hourly_chime.py     整点报时
-  vitals.py           生活数值：心情 / 活力 / 饱腹（按在线时间衰减，低值软影响待机情绪）
+  vitals.py           生活数值：心情 / 活力 / 饱腹（按在线时间衰减，低值触发提醒）
   economy.py          噜噜币与上班（按分钟进账 + 商店食物表；扣币与补数值在 main 牵线）
 ui/                   托盘菜单、设置对话框、气泡提示 toast、数值状态卡、更新弹窗
   theme.py            界面统一风格：调色板 / 圆角阴影卡片画法 / 右键菜单样式表（几处共用）
-  status_card.py      数值状态卡（自绘进度条浮窗，托盘左键 / 菜单「看看状态」弹出）＋菜单顶部同款摘要条
+  status_card.py      数值状态卡（自绘进度条浮窗，托盘左键弹出）＋菜单顶部同款摘要条
   update_prompt.py    更新提示弹窗（版本 / 更新说明 / 下载百分比 / 失败文案）
 tools_cli/            开发工具（不进产物）
   prepare.py          素材预处理：编号 / md5 去重 / 分类登记（不再去背，见「素材规范」）
-  assign.py           素材整理：按 CSV 清单批量归位分类 + 打循环标，并清理悬空引用
+  assign.py           素材整理：按 CSV 清单批量归位分类 + 打循环标 + 标启用，并清理悬空引用
   gif_pipeline.py     GIF 流水线（缩放 / 抽帧 / 调色 / 体积控制）＋ 保留但不再调用的去背函数
   contact_sheet.py    生成预览接触表
   build.py            PyInstaller 打包 + 素材外置 + 打 zip + 生成 latest.json
-tests/                396 个用例（pytest，conftest 里提供 qapp fixture）
-assets/               素材（外置，不打进 exe，当前 26 张 `processed/lulu_001~026.gif`）
+tests/                408 个用例（pytest，conftest 里提供 qapp fixture）
+assets/               素材（外置，不打进 exe，当前 41 张 `processed/lulu_001~041.gif`）
 update/latest.json    自动更新清单（**发布源，必须入库**）
 docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词）+ superpowers 下的 spec / plan
 ```
@@ -107,8 +118,9 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 - **GIF 双轨渲染**：素材分 `transparent`（已去背，直接画在桌面上）与 `card`（带背景，
   走圆角卡片渲染）两轨。轨道实测记录在 `assets/categories.json` 的 `tracks` 字段，
   `Sprite.play()` 按**被选中素材的实测轨道**渲染（不要按分类固定轨道）。
-  **新素材一律要求预先去背**，管线不再去背，所以现在 26 张全是透明轨（`tracks` 为空即按
-  `auto` 处理，渲染走透明分支）；`card` 轨目前没有素材在用，渲染分支要留着。
+  管线按**首帧是否有 alpha** 分轨：自带 alpha → 透明轨；没去背 → 卡片轨
+  （渲染层套一层圆角卡片把不透明背景框起来，见 `render_frame()`），不再拒收。
+  `tracks` 里没有记录的素材按 `auto` 处理，渲染走透明分支。
 - **是否可循环由素材说了算**：`assets/categories.json` 的 `loops` 字段（文件名 → bool）记录每张素材
   是否可循环，缺省或非布尔值一律当**可循环**（兼容 0.2.4 及更早的 json）。
   `Sprite.play(category)` 只按**被选中素材**的属性设 `QMovie.loopCount`（`-1` 一直播、`1` 播一次），
@@ -117,27 +129,26 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
   （避免画面死在末帧）、`stroll` 忽略（一圈走完由 `on_stroll_finished` 收尾，不能半路停下）、
   分类已被别的高优先级状态顶掉时忽略。
   注意 PyQt5 里 `loopCount` 是**属性不是 setter**，要写 `movie.loopCount = -1`。
-- **行为状态机** `pet/behavior.py`：`idle` 空闲一段时间后随机触发小动作，
-  `_AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")` **默认等概率六选一**；
-  `vitals.action_weights()` 给出的权重表经 `set_action_weights()` 传进来后改为**按权重不放回抽**
-  （`_action_order()`）——权重只改「先试哪个」的顺序，抽到的分类缺素材仍会往后试，不会空转一整轮；
-  `set_action_weights(None)` 或空表即恢复等概率。
+- **是否启用由素材说了算**：`assets/categories.json` 的 `enabled` 字段（文件名 → bool）记录每张素材
+  是否启用，缺省或非布尔值一律当**启用**（`catalog.enabled_of()`）。`false` 的素材：
+  ① `catalog.pick()` 会把它滤掉，任何分类都不会挑中它（该分类因此可能只剩别的素材或返回 `None`）；
+  ② `build.py` 打包时跳过它（不进产物 `assets/processed/`，也不进 `latest.json` 的 `assets.files`）。
+  改启用标记走 `assign.py` 清单第 4 列，别手改 json。
+- **行为状态机**：待机小动作只保留 `walk`，普通待机久了也可入睡。数值低时走模块提醒，不再给动作池加权。
   状态常量 `IDLE` / `DRAGGED` / `WANDER` / `STROLL` / `AWAKE`，分类到状态的映射见 `_STATE_NAMES`
   （默认取分类名大写，`walk → WANDER`、`stroll → STROLL` 是特例）。几个「插播式」触发点：
   - `showup`：启动后首次露面（`main._start_ui`）与从贴边隐藏恢复（`_on_edge_hidden_changed`）
-    各播一次，播完再补一个 `surprise` 然后回待机。它只占 `auto` 级，不挡用户点击 / 模块通知。
+    各播一次，播完回待机。
   - `awake`：睡觉中被任何请求打断时插播一次（`request()` 检测到从 `sleep` 出来，
     `_to_idle()` 那条路走同一个入口），最多 8s 后回待机（可循环素材也靠这个计时兜底）。
-  - `think`：番茄钟专注期间 `main._sync_life()` 用 `set_idle_category("think")` 把待机素材
-    换掉，退出专注换回 `idle`；待机态没结束时会自愈（`_to_idle()` 用的就是当前 `_idle_category`）。
-    上班（手动或番茄钟联动）也算「在忙」，共用这条切换。
+  - 专注、上班、搬砖分别将待机分类切为 `think`、`work`、`bricklay`；期间可自主走动，不会自动入睡。
   - `move`：拖拽时播（`on_drag_started`）；没这个分类的素材则定格当前一帧。
   - `sport`：久坐提醒触发时播（`modules/health_reminder.py` 的 SIT 表情分类）。
 - **贴边隐藏** `pet/edge_hide.py`：拖到屏幕左右边缘松手即缩进屏幕外，只露 **24px** 桔子窄条
   （`DEFAULT_EDGE_PX = DEFAULT_STRIP_PX = 24`）；
   **只有把桔子拖离边缘并松手才恢复显示**，鼠标划过 / 悬停都不唤醒。状态持久化到 `config.json` 的 `pet.edge_hide`。
 - **鼠标穿透双模式**：交互模式可拖拽；穿透模式不拦截鼠标（`winutil` 里改窗口扩展样式）。
-- **托盘**：图标固定由 `lulu_002.gif` 首帧生成 64×64 PNG（`assets/tray_icon.png`，缺失时自动重建）；
+- **托盘**：图标固定由 `lulu_008.gif` 首帧生成 64×64 PNG（`assets/tray_icon.png`，缺失时自动重建）；
   菜单必须用 `QMenu.popup()` 渲染，原生托盘菜单在此环境字体与项渲染异常。
   左键单击图标（`activated(Trigger)`）发 `Tray.clicked` 信号弹状态卡，右键（`Context`）才弹菜单。
 - **配置**：`config.json` 位于程序目录，运行期自动生成，不入库；结构见 `pet/config.py` 的 `DEFAULTS`
@@ -166,7 +177,8 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
   不要在各个交互函数里分别补气泡位置——加一处新的位移逻辑时容易漏。
 - **数值状态卡** `ui/status_card.py`：另一条自绘顶层窗（和 `toast.py` 同套路：
   `Qt.Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowTransparentForInput` + 半透明 + 不激活），
-  用彩色进度条展示心情 / 活力 / 饱腹。`main._show_status_card()` 弹（托盘左键 / 菜单），
+  用彩色进度条展示心情 / 活力 / 饱腹（左侧小图标由 `icon_parts()` 自绘：红心 / 闪电 / 汉堡，固定彩色），
+  底部一行是星金币图标 + 噜噜币数额。`main._show_status_card()` 弹（托盘左键），
   `_update_status()`（1s 心跳）在卡片可见时刷新。**托盘原生 tooltip 只能一行纯文本，放不下进度条**，
   所以别再往 `setToolTip` 里塞可视化。
 - **界面风格统一走 `ui/theme.py`**：调色板（`BG` / `BORDER` / `TEXT_COLOR` / `STYLES`）、圆角阴影卡片画法
@@ -177,14 +189,15 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
   之后任意一次 `show()`（比如 `Sprite.show()`）直接 access violation，全量测试跑到一半整个进程崩掉，
   且崩溃点看起来和菜单毫无关系。菜单圆角改由 `ui/menu.CardMenu` 的**窗口 mask** 提供。
   护栏：`tests/test_theme.py::test_menu_style_keeps_radius_off_the_menu_panel`。
+- **这个 mask 只能从 1 位位图（`QBitmap`）生成**：别用 `QPainterPath.toFillPolygon().toPolygon()`
+  再喂给 `QRegion`——同样会写坏堆，症状和上面那条一模一样（全量测试跑到 `test_smoke` 里
+  `Sprite.show()` 时整个进程崩掉，`setMask` 一个正矩形区域却没事）。
 - **右键菜单顶部有一条数值摘要**：`ui/menu.MenuState.vitals`（心情 / 活力 / 饱腹 / 噜噜币 / 本班进账，
   为 `None` 则不显示）→ `build_header()` 造 `StatusHeader`（状态卡同款进度条，但不画卡片边框阴影）
   → `QWidgetAction` 塞在菜单最前。`main._menu_state()` 从 `vitals` / `economy` 两个模块取数。
 - **生活系统（数值 + 噜噜币）拆成两个模块**，`main` 是唯一的牵线人：
   - `modules/vitals.py`（心情 / 活力 / 饱腹）与 `modules/economy.py`（噜噜币 / 上班）**互不 import**；
-    上班→衰减翻倍、食物→补数值、币→扣减这三处耦合全在 `main._sync_life()` / `_buy_food()` 里连。
-  - `main._sync_life()` 由模块心跳（1s）与各交互入口调用：番茄钟专注 → `economy.set_focus()`，
-    上班状态 → `vitals.set_working()`，「在忙」（专注或上班）→ 待机切 `think`，数值偏低 → 行为机加权表。
+    `main._activity()` 由当前班次与动画判定生活活动；菜单和处理函数双重检查。`_sync_life()` 将上班、搬砖分别联动心情和活力衰减，专注不抢占其他生活活动。
     它取代了旧的 `_sync_focus_mood()`。
   - `main._update_status()` 把两个模块的 `status_text()` 用 `" · "` 拼进托盘悬停，避免互相覆盖。
   - `behavior.state_changed` → `main._on_behavior_state()` 把「是否在睡觉」告诉 vitals（睡着活力回升）。
@@ -199,9 +212,10 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 ## 素材规范（改素材前必读）
 
 - 原始件放 `assets/raw/`；工具处理后产出 `assets/processed/lulu_NNN.gif`，桌宠只引用 `processed`。
-- **素材必须提前去好背（自带 alpha）**。管线**不再做去背**，`process_gif()` 拿到没有 alpha 的素材
-  会直接抛 `ValueError`：该素材计入 `report["failed"]`、半成品被删掉、报告里点名，`prepare.py` 退出码 1。
-  这是刻意设计的硬门槛——漏去背要立刻暴露，不许静默出片。
+- **按首帧有没有 alpha 分轨**，两条轨都收：
+  - 自带 alpha → **透明轨**，直接画在桌面上，边缘干净；
+  - 没去背（不透明底）→ **卡片轨**，渲染层套一层圆角卡片把背景框起来（观感像一张相片）。
+  判定只看**首帧**（加上 `im.info["transparency"]`）——首帧透明但后续帧不透明的素材会被误判成透明轨。
   去背实现（`sample_background` / `remove_background` / `analyze_frame` / `grade` 等）仍保留在
   `tools_cli/gif_pipeline.py` 里且有单测，但**已无调用方**，需要时可手工调用。
   旧版靠 `--tol` / `--edge-min` 控制去背质量，这两个参数现在只是留着，传了也不生效。
@@ -209,36 +223,32 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 - 账本文件：
   - `assets/.index.json`：md5 → {name, track}
   - `assets/id_map.csv`：id / raw / track 对照表（目前 `prepare.py` 已不生成，仅历史遗留）
-  - `assets/categories.json`：分类结构、每张图的实测轨道与是否可循环（`loops` 字段，缺省视为可循环）
-- 分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `showup` `awake`
-  `move` `think` `sport` `cry` `anxious` `surprise`（18 个）＋ `unassigned`。
-  缺素材时按语义就近降级再落 `idle`，最后才到 `unassigned`（见 `catalog.FALLBACK`）：
-  `cry→sad`、`move→walk`、`anxious→angry`、`surprise→happy`、`drink→eat`，其余同名 → `idle`。
-- 当前共 **26 张**（`assets/processed/lulu_001~026.gif`）：`idle` 6、`happy` 3、`walk` 3、`angry` 3、
-  `showup` 2、`awake` 2，`drink` / `move` / `think` / `sport` / `cry` / `anxious` / `surprise` 各 1；
-  `stroll` / `sleep` / `eat` / `sad` / `bath` 暂无素材（靠回退链顶替），`unassigned` 为空。
-  标了「只播一次」的 6 张：`lulu_001` `005` `006` `007` `013` `016`。
-  `tracks` 字段目前是空的（`track_of()` 一律返回 `auto`，渲染走透明分支），实测 26 张都自带 alpha。
+  - `assets/categories.json`：分类结构、每张图的实测轨道（`tracks`）、是否可循环（`loops`）
+    与是否启用（`enabled`）；`loops` / `enabled` 缺省或非布尔值分别当 `true` / 启用
+- 27 个动作分类另加 `unassigned`；`pet/catalog.py` 是分类与回退链的真相源。`stroll` 不回退；`drink→eat`、`move→walk`、`anxious→angry` 后再按通用链降级。0.3.0 有 41 张 GIF，11 张停用，整包及热更清单均含 30 张 GIF。
+  `tracks` 里 `lulu_027~036` 是 `transparent`、`lulu_037~041` 是 `card`（这 5 张没去背，走卡片轨）。
 - 默认参数：`TOL=32`、`EDGE_MIN=0.70`、`MAX_SIDE=200`、`MAX_FPS=10`、`COLORS=96`、`MAX_BYTES=300KB`。
   高帧率 / 高分辨率素材要显式放宽，例如散步那张用的是
   `--max-side 240 --fps 20 --max-kb 500`（240×240、34 帧、394KB），
   用默认档会被抽帧到明显卡顿。
 - 标准流程：**去好背的** GIF 放入 `raw/` → `python tools_cli/prepare.py [放宽参数]`
-  → `python tools_cli/contact_sheet.py`（人工看图分类）→ 用 `assign.py` 按清单归位分类与循环标
+  → `python tools_cli/contact_sheet.py`（人工看图分类）→ 用 `assign.py` 按清单归位分类 / 循环标 / 启用标
   → `python tools_cli/build.py`。
 - **批量整理用 `assign.py`**（`tools_cli/assign.py`），别在 `categories.json` 里手数文件名：
-  - `python tools_cli/assign.py --template assets/assign.csv` 生成待填清单（列出现有素材的归属与循环标记）；
-  - 清单是带表头的 CSV `file,category,loop`，一张图想挂多分类就写多行（如吃 / 喝共用一张）；
-    `loop` 留空表示不改动；
+  - `python tools_cli/assign.py --template assets/assign.csv` 生成待填清单（列出现有素材的归属、循环标记与启用标记）；
+  - 清单是带表头的 CSV `file,category,loop,enable`，一张图想挂多分类就写多行（如吃 / 喝共用一张）；
+    `loop` / `enable` 留空表示不改动，`enable=false` 的素材不参与播放、打包也不带；
   - `python tools_cli/assign.py assets/assign.csv` 落盘。**清单里出现过的文件会先摘出原分类再归位**，
     没点名的文件原样不动；未知分类、`processed/` 里不存在的文件名会跳过并点名，退出码 1。
   - 清单是开发期输入（`.gitignore` + `build.py` 的 `_DEV_ONLY` 都已排除），真相始终是 `categories.json`。
 - **删素材只需删文件**，再跑 `python tools_cli/assign.py --prune`：它会把 `categories.json` 的
-  分类归属 / `tracks` / `loops` 与 `.index.json` 里指向已删文件的条目一并摘掉。
+  分类归属 / `tracks` / `loops` / `enabled` 与 `.index.json` 里指向已删文件的条目一并摘掉。
   不清理 `.index.json` 的话，以后重新放回**同一张图**会被 md5 去重当成重复而跳过。
 - **可循环**：`prepare.py` 登记新素材时默认在 `categories.json` 的 `loops` 里写 `true`。
   要某张图只能播一次，用 `assign.py` 的清单把 `loop` 写成 `false` 即可（`categories.json` 走素材热更
   静默下发，但用户端生效需要程序重新读一次清单）。
+- **是否启用**：`prepare.py` 登记的新素材默认启用（`enabled` 里不写或写 `true`）。
+  要停用某张素材，用 `assign.py` 的清单把 `enable` 写成 `false`；它既不参与播放也不进打包产物。
 - 坑：
   - `prepare.py --rebuild` 会从 1 重新编号，会让既有分类错位，**不要随意使用**。
   - 手动删素材后跑一次 `assign.py --prune` 清理悬空引用（见上），别只删文件不管账本。
@@ -251,11 +261,11 @@ docs/                 本文件 + `handoff-prompt.md`（新会话开场提示词
 
 ```powershell
 cd momolulu
-python -m pytest -q -p no:cacheprovider   # 全量测试，期望 396 项且退出码 0（本机不打印汇总行）
+python -m pytest -q -p no:cacheprovider   # 全量测试，期望 408 项且退出码 0（本机不打印汇总行）
 python tools_cli/build.py                 # 打包到 dist/momolulu/，并产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 python tools_cli/prepare.py               # 素材预处理
 python tools_cli/contact_sheet.py         # 生成预览接触表
-python tools_cli/assign.py --template assets/assign.csv   # 生成待填清单（分类 + 循环标记）
+python tools_cli/assign.py --template assets/assign.csv   # 生成待填清单（分类 + 循环标记 + 启用标记）
 python tools_cli/assign.py assets/assign.csv --prune      # 按清单落盘，并清掉悬空引用
 ```
 
@@ -265,10 +275,7 @@ python tools_cli/assign.py assets/assign.csv --prune      # 按清单落盘，�
 - **贴边隐藏**：拖到屏幕左右边缘松手隐藏，露 **24px** 桔子条；拖离边缘松手才恢复，悬停不唤醒。
 - **双击不打开设置**：设置入口**只在右键菜单**里（曾经的双击打开已移除，避免误触）。
 - **无状态气泡**：已移除"噜噜在 XXX"的悬停状态提示，相关配置项与设置面板勾选项一并删掉。
-- **气泡只用于到点提醒**：`Toast` 只在模块到点提醒时出现（番茄钟 / 喝水 / 久坐 / 吃饭 / 整点报时），
-  唯一入口是 `main._module_notify`（`modules/*` 经 `ctx.notify` 调用）。点击、连点、切穿透、
-  开关模块、保存设置、开关自启、发起散步、素材热更完成**都不再冒泡**——交互反馈靠噜噜的表情动作，
-  别在交互处理里再加 `_show_toast`。
+- **提示与特效**：模块提醒与部分生活操作用 Toast；桌面泡泡由独立的透明穿透窗口绘制，隐藏、拖动或退出时收起。
 - **自主走动**：`idle` 待久了会随机切到 `walk`，噜噜自己在桌面上慢慢走（约 40px/s），
   走到屏幕边缘折返；走动时气泡一路跟随。
 - **绕屏散步**：右键菜单「搞搞震 ▸ 散步」触发。噜噜先瞬移到当前屏右下角，再沿**工作区**边缘
@@ -277,24 +284,15 @@ python tools_cli/assign.py assets/assign.csv --prune      # 按清单落盘，�
 - **素材可循环属性**：每张素材在 `categories.json` 的 `loops` 里标「是否可循环」。可循环的素材
   **永远循环**（调用方无法要求它只播一次）；标成「只播一次」的素材播完最后一帧就停下回待机
   （`idle` 则接着挑下一张待机图继续播，不会死在末帧；散步途中不截断，由一圈走完统一收尾）。
-  新素材默认 `true`。当前 26 张里有 6 张是 `false`。
-- **新表情的触发时机**：启动 / 从贴边隐藏恢复播 `showup`（随后补一个 `surprise`）；
-  睡觉被叫醒先播 `awake`；番茄钟专注期间待机素材换成 `think`；久坐提醒触发时播 `sport`；
-  拖拽时播 `move`（没有该素材则定格当前帧）；`cry` / `anxious` / `surprise` 也进了待机随机小动作池。
-- **生活系统数值**：心情 / 活力 / 饱腹三项 0~100，**在线时**按小时衰减（心情 6、活力 8、饱腹 10），
-  睡觉时活力改为 +30/h，上班时心情 / 活力衰减 ×2（饱腹不受影响）。跌破 10 冒一次泡（回到 30 以上才重新武装）。
-  数值偏低时待机小动作更偏负面情绪（`sad` / `cry` / `anxious` 加权，软影响，不强制）。
-- **噜噜币 / 上班**：右键菜单「照顾噜噜 ▸ 上班 / 下班」手动开关，或番茄钟专注时自动联动（两者「或」）。
-  上班按 1 币/分钟进账，时长越长赚越多；上班时待机素材切 `think`，托盘悬停显示「上班中 · 已赚 N 噜噜币」。
-- **商店喂食**：右键菜单「照顾噜噜 ▸ 喂食」用噜噜币买：冰淇淋 10→+10 饱腹 & 心情、蛋糕 20→+20、
-  汉堡 30→+30（越贵补得越多），买不起的项置灰。「照顾噜噜 ▸ 哄睡」直接把噜噜哄睡（睡着活力回升）。
+  新素材默认 `true`。当前 41 张里有 8 张是 `false`（`lulu_001` `005` `006` `007` `013` `016` `027` `037`）。
+- **素材启用属性**：每张素材在 `categories.json` 的 `enabled` 里标「是否启用」，缺省视为启用。
+  标成 `false` 的素材**不参与播放**（同类里会被跳过，选不出来）且**打包时被忽略**
+  （不进产物目录，也不进自动更新素材清单）。菜单入口、数值变化与工种互斥规则见 README 的「右键菜单」。睡眠恢复活力，生日当天（12 月 24 日）启动时触发生日表情。
 - **提醒模块默认值**：`pomodoro` 关、`health_reminder` 开（喝水 45min / 久坐 60min）、
   `meal_reminder` 开（12:00、18:30）、`hourly_chime` 关；`vitals` / `economy` 均开（初始 80/80/80、0 币）。
 
 ## 待办 / 未决
 
-1. 待机小动作加权已落地（数值偏低时由 `vitals.action_weights()` 给行为机权重表，软影响）；
-   是否还要给「上班 / 专注」再叠一层权重、以及各食物是否要差异化加成（目前按价线性）尚未定。
 2. `docs/superpowers/` 下 **2026-10-20 那份 spec / plan 是改名前的旧描述**（`lulu_pet`、
    悬停滑出 + 3s 缩回、48px 桔子条、双击打开设置），**尚未回写**，读的时候注意甄别；
    2026-10-21 那份（`2026-10-21-auto-update*`）是自动更新这一版，与代码一致。
@@ -306,12 +304,13 @@ python tools_cli/assign.py assets/assign.csv --prune      # 按清单落盘，�
    - 主程序更新：`info["package"]` 存在时**弹窗**征求同意，才下载整包自替换。
 6. `.gitignore` 覆盖 `dist/`、`*.spec`、`config.json`、`momolulu.log`、`.superpowers/`、
    `assets/raw/`、`.index.json`、`id_map.csv`、`prepare_report.json`、`contact_sheet_*.png`、
-   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 26 张图与 `categories.json`；
+   `tray_icon.png`。clone 后 `assets/` 里只有 `processed` 的 41 张图与 `categories.json`；
    完整素材链路（`raw/` 采集件与账本）需要另外传输。
 7. 睡着时被点击 / 提醒打断，只会播 `awake`，被打断的那个表情（如喝水 / 开心）不播——当前是
    「插播式覆盖」。要「醒觉播完再接原表情」得给行为机加个待播队列，产品上还没定。
-8. `categories.json` 的 `tracks` 是空的（素材改名那轮重置的遗留）：26 张实测都自带 alpha，
-   `track_of()` 返回 `auto`、渲染走透明分支，画面正确；若将来要按目录记实测轨道，得重跑一次素材管线。
+8. `categories.json` 的 `tracks` 只记了 `lulu_027~041`（`027~036` 透明轨、`037~041` 卡片轨）；
+   更早的 `lulu_001~026` 没有记录（素材改名那轮重置的遗留），它们实测都自带 alpha，
+   `track_of()` 返回 `auto`、渲染走透明分支，画面正确；若要把旧素材也补上实测轨道，得重跑一次素材管线。
 
 ## 在另一台电脑继续
 
@@ -320,7 +319,7 @@ git clone https://github.com/zhuolk/momolulu.git
 cd momolulu
 python -m pip install -r requirements.txt
 python -m pip install pytest pyinstaller
-python -m pytest -q -p no:cacheprovider    # 期望 396 项且退出码 0
+python -m pytest -q -p no:cacheprovider    # 期望 408 项且退出码 0
 ```
 
 然后让 AI 先读本文件、再读 `docs/superpowers/specs/` 与 `plans/` 即可接手。
@@ -330,8 +329,7 @@ python -m pytest -q -p no:cacheprovider    # 期望 396 项且退出码 0
 注意：**Trae 的对话历史不在仓库里**——它由客户端 / 云端账号管理，本机没有可搬运的会话文件
 （已确认 `%APPDATA%\Trae\User\workspaceStorage\` 下没有 chatSessions 之类的记录）。
 跨设备靠的是"仓库 + 本交接文档"，或在新客户端登录同一 Trae 账号看账号下的历史会话。
-新机器 clone 到的是 `0.2.6`；「当前进度」那批生活系统改动**只有提交推送后**才会跟着走，
-否则新机器上 `modules/vitals.py`、`modules/economy.py` 与对应测试都不存在。
+新机器以 main 分支的已提交文件为准；用户配置和原始素材不会随 clone 迁移。
 
 ## 自动更新
 

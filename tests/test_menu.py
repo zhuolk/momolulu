@@ -23,15 +23,17 @@ class Handlers:
         self.quit = lambda: self.calls.append(("quit",))
         self.update_now = lambda: self.calls.append(("update_now",))
         self.stroll = lambda: self.calls.append(("stroll",))
+        self.bubble = lambda: self.calls.append(("bubble",))
+        self.music = lambda: self.calls.append(("music",))
         self.toggle_work = lambda on: self.calls.append(("work", on))
+        self.toggle_bricklay = lambda on: self.calls.append(("bricklay", on))
         self.soothe = lambda: self.calls.append(("soothe",))
         self.buy_food = lambda key: self.calls.append(("buy_food", key))
-        self.show_status = lambda: self.calls.append(("show_status",))
 
 
 MODS = {"pomodoro": False, "water": True, "sit": True, "meal": True, "hourly": False}
 # (key, 文案, 价格, 是否买得起)
-FOODS_STATE = (("ice_cream", "冰淇淋", 10, True), ("cake", "蛋糕", 20, False))
+FOODS_STATE = (("watermelon", "西瓜", 5, False), ("hamburger", "汉堡", 30, True))
 
 
 def actions(menu):
@@ -185,10 +187,11 @@ def test_existing_five_arg_calls_still_work(qapp):
     assert "设置…" in actions(m)
 
 
-def test_interact_submenu_holds_stroll(qapp):
+def test_interact_submenu_holds_stroll_and_bubble(qapp):
     m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
     assert "搞搞震" in actions(m)
-    assert "散步" in actions(actions(m)["搞搞震"].menu())
+    interact = actions(actions(m)["搞搞震"].menu())
+    assert "散步" in interact and "吹泡泡" in interact
 
 
 def test_interact_submenu_sits_after_tools_before_settings(qapp):
@@ -204,32 +207,34 @@ def test_stroll_triggers_handler(qapp):
     assert ("stroll",) in h.calls
 
 
-def care_menu(menu):
-    return actions(menu)["照顾噜噜"].menu()
-
-
-def test_care_submenu_holds_feed_soothe_and_work(qapp):
-    m = build_menu(
-        None, MenuState(True, False, False, MODS, False, foods=FOODS_STATE), Handlers().__dict__
-    )
-    care = actions(care_menu(m))
-    assert "喂食" in care and "哄睡" in care and "上班 / 下班" in care
-
-
-def test_care_submenu_holds_show_status(qapp):
+def test_bubble_and_music_trigger_handlers(qapp):
     h = Handlers()
     m = build_menu(None, MenuState(True, False, False, MODS, False), h.__dict__)
-    actions(care_menu(m))["看看状态"].trigger()
-    assert ("show_status",) in h.calls
+    actions(actions(m)["搞搞震"].menu())["吹泡泡"].trigger()
+    assert ("bubble",) in h.calls
+
+    h2 = Handlers()
+    m2 = build_menu(None, MenuState(True, False, False, MODS, False), h2.__dict__)
+    actions(actions(m2)["搞搞震"].menu())["听歌"].trigger()
+    assert ("music",) in h2.calls
+
+
+def test_activity_locks_other_menu_entries(qapp):
+    for activity, available in (
+        ("work", {"打工"}), ("sleep", {"睡觉"}), ("food", set()), ("play", set())
+    ):
+        m = build_menu(None, MenuState(True, False, False, MODS, False, activity=activity), {})
+        items = actions(m)
+        assert {k for k in ("搞搞震", "睡觉", "干饭", "打工") if items[k].isEnabled()} == available
 
 
 def test_food_items_show_price_and_disable_unaffordable(qapp):
     m = build_menu(
         None, MenuState(True, False, False, MODS, False, foods=FOODS_STATE), Handlers().__dict__
     )
-    feed = actions(actions(care_menu(m))["喂食"].menu())
-    assert feed["冰淇淋（10 噜噜币）"].isEnabled() is True
-    assert feed["蛋糕（20 噜噜币）"].isEnabled() is False  # 买不起就置灰
+    feed = actions(actions(m)["干饭"].menu())
+    assert feed["汉堡（30 噜噜币）"].isEnabled() is True
+    assert feed["西瓜（5 噜噜币）"].isEnabled() is False  # 买不起就置灰
 
 
 def test_buy_food_reports_the_key(qapp):
@@ -237,30 +242,55 @@ def test_buy_food_reports_the_key(qapp):
     m = build_menu(
         None, MenuState(True, False, False, MODS, False, foods=FOODS_STATE), h.__dict__
     )
-    actions(actions(care_menu(m))["喂食"].menu())["冰淇淋（10 噜噜币）"].trigger()
-    assert ("buy_food", "ice_cream") in h.calls
+    actions(actions(m)["干饭"].menu())["汉堡（30 噜噜币）"].trigger()
+    assert ("buy_food", "hamburger") in h.calls
 
 
 def test_soothe_triggers_handler(qapp):
     h = Handlers()
     m = build_menu(None, MenuState(True, False, False, MODS, False), h.__dict__)
-    actions(care_menu(m))["哄睡"].trigger()
+    assert actions(m)["睡觉"].menu() is None
+    actions(m)["睡觉"].trigger()
     assert ("soothe",) in h.calls
+
+
+def work_menu(menu):
+    return actions(menu)["打工"].menu()
+
+
+def test_work_submenu_holds_clock_in_and_bricklay(qapp):
+    m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
+    work = actions(work_menu(m))
+    assert "上班" in work and "搬砖" in work
 
 
 def test_work_item_reflects_state_and_reports_change(qapp):
     h = Handlers()
     m = build_menu(None, MenuState(True, False, False, MODS, False, working=True), h.__dict__)
-    work = actions(care_menu(m))["上班 / 下班"]
-    assert work.isCheckable() is True and work.isChecked() is True
-    work.trigger()
+    clock_in = actions(work_menu(m))["上班"]
+    assert not actions(work_menu(m))["搬砖"].isEnabled()
+    assert clock_in.isCheckable() is True and clock_in.isChecked() is True
+    clock_in.trigger()
     assert ("work", False) in h.calls
+
+
+def test_bricklay_item_reflects_state_and_reports_change(qapp):
+    h = Handlers()
+    m = build_menu(
+        None, MenuState(True, False, False, MODS, False, bricklaying=True), h.__dict__
+    )
+    bricklay = actions(work_menu(m))["搬砖"]
+    assert not actions(work_menu(m))["上班"].isEnabled()
+    assert bricklay.isCheckable() is True and bricklay.isChecked() is True
+    bricklay.trigger()
+    assert ("bricklay", False) in h.calls
 
 
 def test_care_submenu_sits_after_interact_before_settings(qapp):
     m = build_menu(None, MenuState(True, False, False, MODS, False), Handlers().__dict__)
     order = [a.text().replace("&", "") for a in m.actions()]
-    assert order.index("搞搞震") < order.index("照顾噜噜") < order.index("设置…")
+    assert "照顾噜噜" not in order
+    assert order.index("搞搞震") < order.index("睡觉") < order.index("干饭") < order.index("打工")
 
 
 # ---------------------------------------------------------------- 顶部数值摘要
@@ -284,7 +314,7 @@ def test_menu_shows_vitals_header(qapp):
     header = header_of(m)
     assert header is not None
     assert header._values() == [72.5, 48.0, 91.0]
-    assert header.note_text() == "噜噜币 42"
+    assert header.note_text() == "42"
 
 
 def test_vitals_header_sits_on_top(qapp):
@@ -305,7 +335,7 @@ def test_vitals_header_follows_work_state(qapp):
         MenuState(True, False, False, MODS, False, working=True, vitals=(50, 50, 50, 10, 15)),
         Handlers().__dict__,
     )
-    assert header_of(m).note_text() == "上班中 · 已赚 15 噜噜币"
+    assert header_of(m).note_text() == "上班中 · 已赚 15"
 
 
 def test_menu_applies_card_style_sheet(qapp):

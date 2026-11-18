@@ -8,8 +8,8 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QRectF
-from PyQt5.QtGui import QPainterPath, QRegion
+from PyQt5.QtCore import QRectF, Qt
+from PyQt5.QtGui import QBitmap, QPainter, QRegion
 from PyQt5.QtWidgets import QActionGroup, QMenu, QMessageBox, QWidgetAction
 
 from ui.status_card import StatusHeader
@@ -33,7 +33,9 @@ class CardMenu(QMenu):
     """与状态卡同款圆角的菜单。
 
     QSS 里写 `border-radius` 会写坏 `QStyleSheetStyle` 的堆（见 `ui.theme.menu_style`），
-    所以圆角改用窗口 mask 切——尺寸一变就重切一次。
+    所以圆角改用窗口 mask 切——尺寸一变就重切一次。mask 由「1 位位图」生成：
+    `QPainterPath.toFillPolygon().toPolygon()` 转出来的多边形在本机会写坏堆（之后任意一次
+    `show()` 直接崩），位图这条路则不碰那个转换。
     """
 
     def __init__(self, parent=None):
@@ -43,11 +45,16 @@ class CardMenu(QMenu):
     def round_corners(self) -> None:
         """按当前尺寸重切圆角；尺寸没变就跳过（`resizeEvent` 会频繁触发）。"""
         size = self.size()
-        if size == self._masked:
+        if size == self._masked or size.isEmpty():
             return
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(0, 0, size.width(), size.height()), RADIUS, RADIUS)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        bitmap = QBitmap(size)
+        bitmap.fill(Qt.color0)
+        painter = QPainter(bitmap)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(Qt.color1)
+        painter.drawRoundedRect(QRectF(0, 0, size.width(), size.height()), RADIUS, RADIUS)
+        painter.end()
+        self.setMask(QRegion(bitmap))
         self._masked = size
 
     def resizeEvent(self, event):  # noqa: N802 - Qt 命名
@@ -67,8 +74,10 @@ class MenuState:
         pomodoro_running: bool,
         update_version: str | None = None,
         working: bool = False,
+        bricklaying: bool = False,
         foods: tuple = (),
         vitals: tuple | None = None,
+        activity: str | None = None,
     ):
         self.visible = bool(visible)
         self.passthrough = bool(passthrough)
@@ -77,6 +86,8 @@ class MenuState:
         self.pomodoro_running = bool(pomodoro_running)
         self.update_version = update_version or None
         self.working = bool(working)
+        self.bricklaying = bool(bricklaying)
+        self.activity = "work" if working or bricklaying else activity
         # (key, 文案, 价格, 是否买得起)
         self.foods = tuple(foods)
         # (心情, 活力, 饱腹, 噜噜币, 本班进账)，为 None 时不显示顶部摘要条
@@ -89,7 +100,7 @@ def build_header(state: MenuState) -> StatusHeader | None:
         return None
     mood, energy, satiety, coins, earned = state.vitals
     header = StatusHeader()
-    header.set_state(mood, energy, satiety, coins, state.working, earned)
+    header.set_state(mood, energy, satiety, coins, state.activity == "work", earned)
     return header
 
 
@@ -176,21 +187,33 @@ def build_menu(parent, state: MenuState, handlers) -> QMenu:
 
     interact = menu.addMenu("搞搞震")
     interact.addAction("散步").triggered.connect(_slot(handlers, "stroll"))
+    interact.addAction("吹泡泡").triggered.connect(_slot(handlers, "bubble"))
+    interact.addAction("听歌").triggered.connect(_slot(handlers, "music"))
+    interact.setEnabled(state.activity is None)
 
-    menu.addSeparator()
-
-    care = menu.addMenu("照顾噜噜")
-    care.addAction("看看状态").triggered.connect(_slot(handlers, "show_status"))
-    feed = care.addMenu("喂食")
+    sleep = menu.addAction("睡觉")
+    sleep.setCheckable(True)
+    sleep.setChecked(state.activity == "sleep")
+    sleep.setEnabled(state.activity in (None, "sleep"))
+    sleep.triggered.connect(_slot(handlers, "soothe"))
+    feed = menu.addMenu("干饭")
+    feed.setEnabled(state.activity is None)
     for key, label, price, affordable in state.foods:
         action = feed.addAction(f"{label}（{price} 噜噜币）")
         action.setEnabled(bool(affordable))
         action.triggered.connect(_slot(handlers, "buy_food", key))
-    care.addAction("哄睡").triggered.connect(_slot(handlers, "soothe"))
-    work = care.addAction("上班 / 下班")
-    work.setCheckable(True)
-    work.setChecked(state.working)
-    work.toggled.connect(lambda on: _call(handlers, "toggle_work", bool(on)))
+    work = menu.addMenu("打工")
+    work.setEnabled(state.activity in (None, "work"))
+    clock_in = work.addAction("上班")
+    clock_in.setCheckable(True)
+    clock_in.setChecked(state.working)
+    clock_in.setEnabled(not state.bricklaying)
+    clock_in.toggled.connect(lambda on: _call(handlers, "toggle_work", bool(on)))
+    bricklay = work.addAction("搬砖")
+    bricklay.setCheckable(True)
+    bricklay.setChecked(state.bricklaying)
+    bricklay.setEnabled(not state.working)
+    bricklay.toggled.connect(lambda on: _call(handlers, "toggle_bricklay", bool(on)))
 
     menu.addSeparator()
 

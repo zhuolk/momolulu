@@ -2,7 +2,7 @@ import json, random
 from pathlib import Path
 from pet.catalog import (CATEGORIES, FALLBACK, default_categories, load_categories, save_categories,
                          existing_files, add_unassigned, set_track, loops_of, set_loop, pick,
-                         assign_file, forget_file, missing_files)
+                         assign_file, forget_file, missing_files, enabled_of, set_enabled)
 
 
 def prep(tmp_path, files=("lulu_001.gif",)):
@@ -13,7 +13,7 @@ def prep(tmp_path, files=("lulu_001.gif",)):
 
 def test_default_structure_and_fallback_chain():
     d = default_categories()
-    assert set(CATEGORIES) | {"unassigned"} <= set(d["categories"]) and d["version"] == 3
+    assert set(CATEGORIES) | {"unassigned"} <= set(d["categories"]) and d["version"] == 4
     for c in CATEGORIES:
         assert FALLBACK[c][0] == c
         if c != "stroll":  # 散步是唯一不回退的分类，单独在下面断言
@@ -31,11 +31,12 @@ def test_stroll_never_falls_back_to_other_categories(tmp_path):
 
 def test_new_categories_fall_back_to_the_closest_old_one():
     """新增分类缺素材时按语义就近降级，不要直接掉到 unassigned。"""
-    assert set(CATEGORIES) >= {"showup", "awake", "move", "think", "sport", "cry", "anxious", "surprise"}
-    assert FALLBACK["cry"][:2] == ("cry", "sad")
+    assert set(CATEGORIES) >= {"showup", "awake", "move", "think", "sport", "anxious", "confuse"}
+    # `cry` / `surprise` 的触发点已下线，分类一并摘除
+    assert "cry" not in CATEGORIES and "surprise" not in CATEGORIES
+    assert "cry" not in FALLBACK and "surprise" not in FALLBACK
     assert FALLBACK["move"][:2] == ("move", "walk")
     assert FALLBACK["anxious"][:2] == ("anxious", "angry")
-    assert FALLBACK["surprise"][:2] == ("surprise", "happy")
 
 
 def test_load_missing_corrupt_or_wrong_shape_returns_default(tmp_path):
@@ -126,6 +127,45 @@ def test_load_categories_ignores_non_boolean_loop_values(tmp_path):
     assert loops_of(load_categories(p), "lulu_001.gif") is True
 
 
+def test_enabled_defaults_to_true_and_survives_roundtrip(tmp_path):
+    """没登记的素材算启用；标了「不启用」的要能存下来再读回来。"""
+    d = default_categories()
+    assert enabled_of(d, "lulu_001.gif") is True
+    set_enabled(d, "lulu_001.gif", False)
+    assert enabled_of(d, "lulu_001.gif") is False
+
+    p = tmp_path / "c.json"
+    save_categories(p, d)
+    assert enabled_of(load_categories(p), "lulu_001.gif") is False
+
+
+def test_load_categories_ignores_non_boolean_enabled_values(tmp_path):
+    p = tmp_path / "c.json"
+    save_categories(p, {"version": 4, "categories": {}, "enabled": {"lulu_001.gif": "no"}})
+    assert enabled_of(load_categories(p), "lulu_001.gif") is True
+
+
+def test_pick_skips_disabled_assets(tmp_path):
+    """不启用的素材不参与播放：同类里只剩它时等同于没素材。"""
+    prep(tmp_path, ("lulu_001.gif", "lulu_002.gif"))
+    d = default_categories()
+    d["categories"]["idle"]["files"] = ["lulu_001.gif", "lulu_002.gif"]
+    set_enabled(d, "lulu_002.gif", False)
+    for _ in range(20):
+        assert pick(d, "idle", tmp_path).name == "lulu_001.gif"
+
+    set_enabled(d, "lulu_001.gif", False)
+    assert pick(d, "idle", tmp_path) is None
+
+
+def test_pick_scan_fallback_also_skips_disabled(tmp_path):
+    """索引整体为空、退化成扫目录时同样要跳过不启用的素材。"""
+    prep(tmp_path, ("lulu_001.gif",))
+    d = default_categories()
+    set_enabled(d, "lulu_001.gif", False)
+    assert pick(d, "idle", tmp_path) is None
+
+
 def test_assign_file_moves_between_categories_and_refreshes_track(tmp_path):
     """归位要摘干净原分类；混轨时分类聚合轨道回落 auto。"""
     prep(tmp_path, ("lulu_001.gif", "lulu_002.gif"))
@@ -152,15 +192,17 @@ def test_assign_file_can_take_several_categories_at_once():
     assert d["categories"]["drink"]["files"] == ["lulu_003.gif"]
 
 
-def test_forget_file_drops_category_track_and_loop(tmp_path):
+def test_forget_file_drops_category_track_loop_and_enabled(tmp_path):
     d = default_categories()
     d["categories"]["idle"]["files"] = ["lulu_001.gif"]
     set_track(d, "lulu_001.gif", "transparent")
     set_loop(d, "lulu_001.gif", False)
+    set_enabled(d, "lulu_001.gif", False)
 
     forget_file(d, "lulu_001.gif")
     assert d["categories"]["idle"]["files"] == [] and d["categories"]["idle"]["track"] == "auto"
     assert "lulu_001.gif" not in d["tracks"] and "lulu_001.gif" not in d["loops"]
+    assert "lulu_001.gif" not in d["enabled"]
 
 
 def test_missing_files_lists_only_ghosts(tmp_path):
@@ -169,4 +211,5 @@ def test_missing_files_lists_only_ghosts(tmp_path):
     d["categories"]["idle"]["files"] = ["lulu_001.gif", "ghost.gif"]
     set_track(d, "ghost2.gif", "card")
     set_loop(d, "ghost3.gif", True)
-    assert missing_files(d, tmp_path) == ["ghost.gif", "ghost2.gif", "ghost3.gif"]
+    set_enabled(d, "ghost4.gif", False)
+    assert missing_files(d, tmp_path) == ["ghost.gif", "ghost2.gif", "ghost3.gif", "ghost4.gif"]

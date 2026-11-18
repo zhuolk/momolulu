@@ -10,13 +10,14 @@
 
 from __future__ import annotations
 
+import math
+
 from PyQt5.QtCore import QPoint, QRect, QRectF, Qt, QTimer
-from PyQt5.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
+from PyQt5.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PyQt5.QtWidgets import QApplication, QWidget
 
 from ui.theme import (
     BORDER,
-    LABEL_COLOR,
     NOTE_COLOR,
     PAD,
     SHADOW,
@@ -35,12 +36,20 @@ GAP = 8
 DURATION_MS = 8000
 
 TITLE_TEXT = "噜噜的状态"
-# (取值属性名, 文案)
-ROWS = (("mood", "心情"), ("energy", "活力"), ("satiety", "饱腹"))
+# 三行生活数值的 key（与 `_VitalsView` 的属性名一致），左侧画 `icon_parts` 的小图标
+ROWS = ("mood", "energy", "satiety")
 
-_LABEL_WIDTH = 42
+_ICON_SIZE = 13
+_LABEL_WIDTH = 22
 _VALUE_WIDTH = 36
 _BAR_GAP = 8
+
+# 小图标固定配色（不随数值分档变色）
+_MOOD_COLOR = "#FF4D6D"
+_ENERGY_COLOR = "#FFB020"
+_BUN_COLOR = "#E8A33D"
+_PATTY_COLOR = "#8C5A33"
+_COIN_COLOR = "#F0B429"
 
 # 菜单顶部摘要条宽度（与卡片正文区等宽）
 HEADER_WIDTH = CARD_WIDTH - 2 * (SHADOW + PAD)
@@ -58,10 +67,13 @@ def level_color(value: float) -> QColor:
 
 
 def note_text(working: bool, earned: int, coins: float) -> str:
-    """底部一行：上班中显示本班进账，否则显示余额。"""
+    """底部一行的文字：上班中显示本班进账，否则显示余额。
+
+    「噜噜币」三个字已经由左侧的星金币图标代替，所以这里只出数额。
+    """
     if working:
-        return f"上班中 · 已赚 {int(earned)} 噜噜币"
-    return f"噜噜币 {int(coins)}"
+        return f"上班中 · 已赚 {int(earned)}"
+    return f"{int(coins)}"
 
 
 def header_height() -> int:
@@ -93,18 +105,115 @@ def _paint_title(painter: QPainter, x: float, y: float, width: float, font) -> f
     return y + TITLE_HEIGHT + GAP
 
 
+def icon_parts(
+    key: str, cx: float, cy: float, size: float = _ICON_SIZE
+) -> list[tuple[QPainterPath, str]]:
+    """小图标的「矢量路径 + 颜色」段，造型中心落在 `(cx, cy)`。
+
+    心情=红心 / 活力=闪电 / 饱腹=汉堡 / coins=星金币，色值固定不随数值分档。
+    未知 key 返回空列表。矢量自绘，不依赖图片素材或字体里的符号
+    （emoji 在各机器上渲染不一致）。
+    """
+    half = size / 2.0
+    if key == "mood":
+        heart = QPainterPath()
+        heart.moveTo(cx, cy + 0.62 * half)
+        heart.cubicTo(
+            cx - 1.35 * half,
+            cy - 0.10 * half,
+            cx - 0.75 * half,
+            cy - 1.25 * half,
+            cx,
+            cy - 0.42 * half,
+        )
+        heart.cubicTo(
+            cx + 0.75 * half,
+            cy - 1.25 * half,
+            cx + 1.35 * half,
+            cy - 0.10 * half,
+            cx,
+            cy + 0.62 * half,
+        )
+        return [(heart, _MOOD_COLOR)]
+    if key == "energy":
+        points = (
+            (0.30, -1.00),
+            (-0.75, 0.15),
+            (-0.02, 0.15),
+            (-0.30, 1.00),
+            (0.75, -0.15),
+            (0.02, -0.15),
+        )
+        bolt = QPainterPath()
+        bolt.moveTo(cx + points[0][0] * half, cy + points[0][1] * half)
+        for dx, dy in points[1:]:
+            bolt.lineTo(cx + dx * half, cy + dy * half)
+        bolt.closeSubpath()
+        return [(bolt, _ENERGY_COLOR)]
+    if key == "satiety":
+        # 汉堡：上盖（半圆）+ 肉饼 + 下座，三层拼色
+        bun_top = QPainterPath()
+        bun_top.moveTo(cx - 1.05 * half, cy - 0.18 * half)
+        bun_top.cubicTo(
+            cx - 1.05 * half,
+            cy - 1.20 * half,
+            cx + 1.05 * half,
+            cy - 1.20 * half,
+            cx + 1.05 * half,
+            cy - 0.18 * half,
+        )
+        bun_top.closeSubpath()
+
+        patty = QPainterPath()
+        patty.addRoundedRect(
+            QRectF(cx - 1.05 * half, cy - 0.02 * half, 2.10 * half, 0.44 * half),
+            0.21 * half,
+            0.21 * half,
+        )
+
+        bun_bottom = QPainterPath()
+        bun_bottom.addRoundedRect(
+            QRectF(cx - 1.05 * half, cy + 0.54 * half, 2.10 * half, 0.46 * half),
+            0.23 * half,
+            0.23 * half,
+        )
+        return [
+            (bun_top, _BUN_COLOR),
+            (patty, _PATTY_COLOR),
+            (bun_bottom, _BUN_COLOR),
+        ]
+    if key == "coins":
+        # 星金币：一枚圆片挖掉中间的五角星
+        radius = 1.20 * half
+        disc = QPainterPath()
+        disc.addEllipse(QRectF(cx - radius, cy - radius, 2 * radius, 2 * radius))
+
+        star = QPainterPath()
+        for i in range(10):
+            r = 0.70 * half if i % 2 == 0 else 0.28 * half
+            angle = math.radians(-90 + i * 36)
+            x = cx + r * math.cos(angle)
+            y = cy + r * math.sin(angle)
+            if i == 0:
+                star.moveTo(x, y)
+            else:
+                star.lineTo(x, y)
+        star.closeSubpath()
+        return [(disc.subtracted(star), _COIN_COLOR)]
+    return []
+
+
 def _paint_rows(painter: QPainter, x: float, y: float, width: float, values, font) -> float:
-    """画三行「标签 + 渐变进度条 + 数值」，返回下一行的 y。"""
+    """画三行「图标 + 渐变进度条 + 数值」，返回下一行的 y。"""
     label_w, value_w = _LABEL_WIDTH, _VALUE_WIDTH
     bar_w = width - label_w - value_w - 2 * _BAR_GAP
-    for (_key, label), value in zip(ROWS, values):
+    for key, value in zip(ROWS, values):
         value = float(value)
 
-        painter.setPen(qcolor(LABEL_COLOR))
-        painter.setFont(font(9.5, False))
-        painter.drawText(
-            QRect(int(x), int(y), label_w, ROW_HEIGHT), Qt.AlignLeft | Qt.AlignVCenter, label
-        )
+        painter.setPen(Qt.NoPen)
+        for path, colour in icon_parts(key, x + label_w / 2.0, y + ROW_HEIGHT / 2.0):
+            painter.setBrush(qcolor(colour))
+            painter.drawPath(path)
 
         bar_x = x + label_w + _BAR_GAP
         bar_y = y + (ROW_HEIGHT - BAR_HEIGHT) // 2
@@ -140,10 +249,18 @@ def _paint_rows(painter: QPainter, x: float, y: float, width: float, values, fon
 
 
 def _paint_note(painter: QPainter, x: float, y: float, width: float, text: str, font) -> None:
+    """底部一行的「星金币图标 + 文字」，图标与上面三行的图标同一列。"""
+    painter.setPen(Qt.NoPen)
+    for path, colour in icon_parts("coins", x + _LABEL_WIDTH / 2.0, y + TITLE_HEIGHT / 2.0):
+        painter.setBrush(qcolor(colour))
+        painter.drawPath(path)
+
     painter.setPen(qcolor(NOTE_COLOR))
     painter.setFont(font(9.5, True))
     painter.drawText(
-        QRect(int(x), int(y), int(width), TITLE_HEIGHT), Qt.AlignLeft | Qt.AlignVCenter, text
+        QRect(int(x + _LABEL_WIDTH), int(y), int(width - _LABEL_WIDTH), TITLE_HEIGHT),
+        Qt.AlignLeft | Qt.AlignVCenter,
+        text,
     )
 
 
@@ -166,7 +283,7 @@ class _VitalsView:
         self._earned = int(earned)
 
     def _values(self) -> list[float]:
-        return [getattr(self, f"_{key}") for key, _label in ROWS]
+        return [getattr(self, f"_{key}") for key in ROWS]
 
     def note_text(self) -> str:
         """底部一行：上班中显示本班进账，否则显示余额。"""

@@ -4,7 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from pet.catalog import default_categories, load_categories, loops_of, save_categories, set_loop, set_track
+from pet.catalog import (
+    default_categories,
+    enabled_of,
+    load_categories,
+    loops_of,
+    save_categories,
+    set_enabled,
+    set_loop,
+    set_track,
+)
 from tools_cli.assign import (
     main,
     parse_loop,
@@ -164,14 +173,35 @@ def test_template_lists_current_state(tmp_path):
     processed, cats = setup_assets(tmp_path)
     data = load_categories(cats)
     set_loop(data, "lulu_002.gif", False)
+    set_enabled(data, "lulu_001.gif", False)
     save_categories(cats, data)
 
     out = tmp_path / "assign.csv"
     assert write_template(out, processed, cats) == 2
 
     rows = [line.split(",") for line in out.read_text(encoding="utf-8").strip().splitlines()]
-    assert rows[0] == ["file", "category", "loop"]
-    assert rows[1:] == [["lulu_001.gif", "idle", "true"], ["lulu_002.gif", "idle", "false"]]
+    assert rows[0] == ["file", "category", "loop", "enable"]
+    assert rows[1:] == [
+        ["lulu_001.gif", "idle", "true", "false"],
+        ["lulu_002.gif", "idle", "false", "true"],
+    ]
+
+
+def test_assign_sets_enabled_flag_and_blank_leaves_it_alone(tmp_path):
+    processed, cats = setup_assets(tmp_path)
+    manifest = tmp_path / "a.csv"
+    manifest.write_text(
+        "file,category,loop,enable\n"
+        "lulu_001.gif,idle,true,false\n"
+        "lulu_002.gif,idle,,\n",
+        encoding="utf-8",
+    )
+    report = run_assign(cats, processed, manifest=manifest)
+
+    d = load_categories(cats)
+    assert report["enabled"] == 1
+    assert enabled_of(d, "lulu_001.gif") is False
+    assert enabled_of(d, "lulu_002.gif") is True  # enable 列留空 → 不动
 
 
 def test_cli_requires_a_manifest_or_prune(tmp_path):
@@ -185,7 +215,9 @@ def test_cli_template_then_assign_roundtrip(tmp_path):
     manifest = tmp_path / "assign.csv"
     assert main(["--template", str(manifest), "--categories", str(cats), "--processed", str(processed)]) == 0
 
-    text = manifest.read_text(encoding="utf-8").replace("lulu_001.gif,idle,true", "lulu_001.gif,walk,false")
+    text = manifest.read_text(encoding="utf-8").replace(
+        "lulu_001.gif,idle,true,true", "lulu_001.gif,walk,false,true"
+    )
     manifest.write_text(text, encoding="utf-8")
     assert main([str(manifest), "--categories", str(cats), "--processed", str(processed)]) == 0
 

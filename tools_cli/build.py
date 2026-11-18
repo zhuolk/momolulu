@@ -21,6 +21,7 @@ from pathlib import Path
 if __package__ in (None, ""):  # 允许 `python tools_cli/build.py` 直接运行
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pet.catalog import enabled_of, load_categories  # noqa: E402
 from pet.config import DEFAULTS  # noqa: E402
 from pet.download import md5_file, sha256_file  # noqa: E402
 from pet.version import VERSION  # noqa: E402
@@ -62,20 +63,42 @@ def build_args(project_root: Path, out_dir: Path, name: str = APP_NAME) -> list[
     ]
 
 
+def disabled_assets(assets_dir: Path) -> set[str]:
+    """列出 `categories.json` 里被标为不启用的素材；打包与素材清单都要跳过它们。
+
+    索引缺失或损坏时返回空集（`load_categories` 会退回默认结构），不至于让打包失败。
+    """
+    data = load_categories(Path(assets_dir) / "categories.json")
+    names: set[str] = set()
+    for entry in (data.get("categories") or {}).values():
+        names.update(entry.get("files") or [])
+    names.update(data.get("tracks") or {})
+    names.update(data.get("loops") or {})
+    names.update(data.get("enabled") or {})
+    return {name for name in names if not enabled_of(data, name)}
+
+
 def stage_assets(project_root: Path, dist_dir: Path, name: str = APP_NAME) -> None:
     """把 `assets/` 与默认 `config.json` 复制到产物目录（已存在的配置不覆盖）。
 
     只带运行期需要的文件：`assets/raw/` 是素材采集原件，`_DEV_ONLY` 是准备/校对
     脚本的产物，两者运行期都不读，跳过以免产物白白变大。
+    被标为不启用的素材（`categories.json` 的 `enabled` 为 false）同样不带进产物。
     """
     app_dir = Path(dist_dir) / name
     source = Path(project_root) / "assets"
     if source.is_dir():
+        skipped = disabled_assets(source)
+        base_ignore = shutil.ignore_patterns("raw", *_DEV_ONLY)
+
+        def _ignore(dir_path, names):
+            ignored = set(base_ignore(dir_path, names))
+            if Path(dir_path) == source / "processed":
+                ignored |= {n for n in names if n in skipped}
+            return ignored
+
         shutil.copytree(
-            source,
-            app_dir / "assets",
-            dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns("raw", *_DEV_ONLY),
+            source, app_dir / "assets", dirs_exist_ok=True, ignore=_ignore
         )
     config_path = app_dir / "config.json"
     if not config_path.exists():
@@ -95,9 +118,12 @@ def _assets_base(repo: str) -> str:
 
 
 def asset_manifest(assets_dir: Path) -> dict[str, str]:
-    """运行期需要的素材清单：`processed/*.gif` 与 `categories.json`，键相对 `assets/`。"""
+    """运行期需要的素材清单：`processed/*.gif`（跳过未启用的）与 `categories.json`，键相对 `assets/`。"""
     assets_dir = Path(assets_dir)
-    names = sorted(p.name for p in (assets_dir / "processed").glob("*.gif"))
+    skipped = disabled_assets(assets_dir)
+    names = sorted(
+        p.name for p in (assets_dir / "processed").glob("*.gif") if p.name not in skipped
+    )
     rels = [f"processed/{name}" for name in names]
     if (assets_dir / "categories.json").is_file():
         rels.append("categories.json")

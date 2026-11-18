@@ -47,14 +47,24 @@ def test_decays_by_the_hour_while_online(qapp):
     assert m.satiety == 70.0   # 80 - 10
 
 
-def test_working_doubles_mood_and_energy_decay(qapp):
+def test_working_speeds_up_mood_decay_only(qapp):
     m, _, _, clock, _ = make()
     m.set_working(True)
     clock.adv(hours=1)
     m.tick(clock())
-    assert m.mood == 68.0      # 80 - 6*2
-    assert m.energy == 64.0    # 80 - 8*2
+    assert m.mood == 68.0      # 80 - 6*2（上班更耗心情）
+    assert m.energy == 72.0    # 80 - 8：活力不受上班影响
     assert m.satiety == 70.0   # 饱腹不受上班影响
+
+
+def test_bricklaying_speeds_up_energy_decay_only(qapp):
+    m, _, _, clock, _ = make()
+    m.set_bricklaying(True)
+    clock.adv(hours=1)
+    m.tick(clock())
+    assert m.mood == 74.0      # 80 - 6：心情不受搬砖影响
+    assert m.energy == 64.0    # 80 - 8*2（搬砖更耗活力）
+    assert m.satiety == 70.0
 
 
 def test_sleeping_recovers_energy_instead_of_draining_it(qapp):
@@ -117,20 +127,6 @@ def test_values_are_written_back_to_config(qapp):
     assert cfg["modules"]["vitals"]["mood"] == 74
     assert cfg["modules"]["vitals"]["energy"] == 72
     assert saved  # 60 秒节流：这一跳已经超时，应落盘一次
-
-
-def test_action_weights_are_neutral_when_everything_is_fine(qapp):
-    m, *_ = make()
-    assert m.action_weights() is None
-
-
-def test_action_weights_favour_negative_moods_when_low(qapp):
-    m, *_ = make(mood=5, satiety=5, energy=5)
-    weights = m.action_weights()
-    assert weights is not None
-    assert weights["sad"] > 1.0 and weights["cry"] > 1.0
-    assert weights["anxious"] > 1.0
-    assert weights["walk"] < 1.0  # 没力气就不爱走动
 
 
 def test_status_text_rounds_values(qapp):

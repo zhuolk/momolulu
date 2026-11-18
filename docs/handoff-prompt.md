@@ -35,7 +35,7 @@ pytest 测试；分层是 `tools_cli`（素材 / 打包）→ `pet`（核心）�
   `update/latest.json`），只在明确要求时做。
 - 不要顺手重构与本次无关的代码、不要预置用不上的抽象；只做被要求的改动。
 - 素材是**外部资产**：`assets/` 与 exe 平级，真相在 `assets/categories.json`
-  （分类归属 + `tracks` 实测轨道 + `loops` 是否可循环）；批量改分类 / 循环标用
+  （分类归属 + `tracks` 实测轨道 + `loops` 是否可循环 + `enabled` 是否启用）；批量改归属或标记用
   `tools_cli/assign.py` 配 CSV 清单，**不要手工编辑 `categories.json` 的文件名**。
 - 新增分类要一起改：`pet/catalog.py` 的 `CATEGORIES` + `FALLBACK`（回退链）、
   `assets/categories.json`（`default_categories()` 会补齐）、以及**实际触发点**

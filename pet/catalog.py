@@ -3,15 +3,17 @@
 `categories.json` 的结构::
 
     {
-      "version": 3,
+      "version": 4,
       "categories": {"idle": {"files": [...], "track": "auto"}, ..., "unassigned": {...}},
       "tracks": {"lulu_001.gif": "transparent"},
-      "loops": {"lulu_001.gif": true}
+      "loops": {"lulu_001.gif": true},
+      "enabled": {"lulu_002.gif": false}
     }
 
 `categories[cat]["track"]` 是该分类的聚合轨道（分类内文件轨道一致时为其值，混杂时为
 "auto"）；`tracks` 保存每个文件的实测轨道，供按轨挑选素材。
 `loops` 保存每个文件是否可循环：`false` 表示该素材只能播一次，播完即报「播完」。
+`enabled` 保存每个文件是否启用：`false` 表示它既不参与播放、打包时也被跳过（缺省视为启用）。
 """
 
 from __future__ import annotations
@@ -31,19 +33,29 @@ CATEGORIES: tuple[str, ...] = (
     "drink",
     "happy",
     "angry",
-    "sad",
-    "bath",
     "showup",
     "awake",
     "move",
     "think",
     "sport",
-    "cry",
     "anxious",
-    "surprise",
+    # 下面这些分类都有各自的触发点（见 assets/assign_scenes.csv 的场景总表）。
+    "confuse",
+    "hamburger",
+    "watermelon",
+    "bricklay",
+    "unhappy-idle",
+    "tired-idle",
+    "shit",
+    "music",
+    "sleep1",
+    "sleep2",
+    "work",
+    "bubble",
+    "birthday",
 )
 UNASSIGNED = "unassigned"
-VERSION = 3
+VERSION = 4
 
 # 回退链：找不到目标分类时逐级降级，最后落到 unassigned
 FALLBACK: dict[str, tuple[str, ...]] = {name: (name, "idle", UNASSIGNED) for name in CATEGORIES}
@@ -51,10 +63,8 @@ FALLBACK: dict[str, tuple[str, ...]] = {name: (name, "idle", UNASSIGNED) for nam
 # 免得散步时突然改播待机素材、原地打转。
 FALLBACK["stroll"] = ("stroll",)
 FALLBACK["drink"] = ("drink", "eat", "idle", UNASSIGNED)
-FALLBACK["cry"] = ("cry", "sad", "idle", UNASSIGNED)
 FALLBACK["move"] = ("move", "walk", "idle", UNASSIGNED)
 FALLBACK["anxious"] = ("anxious", "angry", "idle", UNASSIGNED)
-FALLBACK["surprise"] = ("surprise", "happy", "idle", UNASSIGNED)
 FALLBACK[UNASSIGNED] = (UNASSIGNED,)
 
 
@@ -62,7 +72,7 @@ def default_categories() -> dict:
     """返回空的分类索引结构。"""
     categories = {name: {"files": [], "track": "auto"} for name in CATEGORIES}
     categories[UNASSIGNED] = {"files": [], "track": "auto"}
-    return {"version": VERSION, "categories": categories, "tracks": {}, "loops": {}}
+    return {"version": VERSION, "categories": categories, "tracks": {}, "loops": {}, "enabled": {}}
 
 
 def _is_valid(data: object) -> bool:
@@ -76,7 +86,8 @@ def _is_valid(data: object) -> bool:
             return False
     tracks = data.get("tracks", {})
     loops = data.get("loops", {})
-    return isinstance(tracks, dict) and isinstance(loops, dict)
+    enabled = data.get("enabled", {})
+    return isinstance(tracks, dict) and isinstance(loops, dict) and isinstance(enabled, dict)
 
 
 def load_categories(path: Path) -> dict:
@@ -93,6 +104,9 @@ def load_categories(path: Path) -> dict:
     merged = default_categories()
     merged["tracks"].update({k: v for k, v in data.get("tracks", {}).items() if isinstance(v, str)})
     merged["loops"].update({k: v for k, v in data.get("loops", {}).items() if isinstance(v, bool)})
+    merged["enabled"].update(
+        {k: v for k, v in data.get("enabled", {}).items() if isinstance(v, bool)}
+    )
     for name, entry in data["categories"].items():
         target = merged["categories"].setdefault(name, {"files": [], "track": "auto"})
         target["files"] = list(entry["files"])
@@ -169,10 +183,11 @@ def assign_file(data: dict, name: str, category: str | Iterable[str]) -> None:
 
 
 def forget_file(data: dict, name: str) -> None:
-    """彻底忘掉一个素材：分类归属、轨道、循环记录一并摘掉。"""
+    """彻底忘掉一个素材：分类归属、轨道、循环、启用记录一并摘掉。"""
     detach_file(data, name)
     data.setdefault("tracks", {}).pop(name, None)
     data.setdefault("loops", {}).pop(name, None)
+    data.setdefault("enabled", {}).pop(name, None)
 
 
 def missing_files(data: dict, processed_dir: Path) -> list[str]:
@@ -183,6 +198,7 @@ def missing_files(data: dict, processed_dir: Path) -> list[str]:
         names.update(entry.get("files") or [])
     names.update(data.get("tracks") or {})
     names.update(data.get("loops") or {})
+    names.update(data.get("enabled") or {})
     return sorted(name for name in names if not (processed_dir / name).is_file())
 
 
@@ -195,6 +211,17 @@ def loops_of(data: dict, name: str) -> bool:
 def set_loop(data: dict, name: str, loopable: bool) -> None:
     """记录素材是否可循环；`False` 表示它只能播一次。"""
     data.setdefault("loops", {})[name] = bool(loopable)
+
+
+def enabled_of(data: dict, name: str) -> bool:
+    """取素材是否启用；无记录（或记录不是布尔）时视为启用。"""
+    value = data.get("enabled", {}).get(name)
+    return value if isinstance(value, bool) else True
+
+
+def set_enabled(data: dict, name: str, enabled: bool) -> None:
+    """记录素材是否启用；`False` 表示不播放、打包时也不带它。"""
+    data.setdefault("enabled", {})[name] = bool(enabled)
 
 
 def add_unassigned(data: dict, names: list[str], tracks: dict[str, str]) -> None:
@@ -221,6 +248,11 @@ def _catalog_is_empty(data: dict) -> bool:
     return not any(entry.get("files") for entry in data.get("categories", {}).values())
 
 
+def _playable(data: dict, names: list[str]) -> list[str]:
+    """过滤掉被标为不启用的素材（它们不参与播放）。"""
+    return [name for name in names if enabled_of(data, name)]
+
+
 def pick(
     data: dict,
     category: str,
@@ -228,7 +260,7 @@ def pick(
     track: str | None = None,
     rng: random.Random | None = None,
 ) -> Path | None:
-    """沿回退链选一个已存在的素材；全链为空返回 None。
+    """沿回退链选一个已存在且启用的素材；全链为空返回 None。
 
     索引整体为空（如 categories.json 丢失）时退化为扫描 processed_dir 兜底。
     """
@@ -239,12 +271,15 @@ def pick(
     for name in FALLBACK.get(category, (category, "idle", UNASSIGNED)):
         entry = categories.get(name) or {}
         candidates = existing_files(list(entry.get("files") or []), processed_dir)
-        candidates = _filter_track(data, candidates, track)
+        candidates = _playable(data, _filter_track(data, candidates, track))
         if candidates:
             return processed_dir / rng.choice(sorted(candidates))
 
     if _catalog_is_empty(data):
-        candidates = _filter_track(data, sorted(p.name for p in processed_dir.glob("*.gif")), track)
+        candidates = _filter_track(
+            data, sorted(p.name for p in processed_dir.glob("*.gif")), track
+        )
+        candidates = _playable(data, candidates)
         if candidates:
             return processed_dir / rng.choice(sorted(candidates))
     return None

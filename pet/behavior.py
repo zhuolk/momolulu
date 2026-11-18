@@ -28,17 +28,19 @@ SLEEP = "SLEEP"
 AWAKE = "AWAKE"
 
 # 分类 → 状态名（默认取分类大写，个别需要不同叫法）
-_STATE_NAMES = {"walk": WANDER, "stroll": STROLL}
-# 待机时可能触发的小动作（等概率随机取一个；外部可用 `set_action_weights` 加权）
-_AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")
+_STATE_NAMES = {"walk": WANDER, "stroll": STROLL, "sleep1": SLEEP, "sleep2": SLEEP}
+# 待机时可能触发的小动作（顺序尝试，抽到的分类没素材就试下一个）
+_AUTO_ACTIONS = ("walk",)
 _SLEEP_CHANCE = 0.5
 _DEFAULT_MAX_MS = 8000
 
-_SLEEP_CATEGORY = "sleep"
+_SLEEP_CATEGORY = "sleep"       # 待机太久自动入睡时循环播的分类
+_SLEEP_INTRO = "sleep1"         # 哄睡：入场动画（播一次）
+_SLEEP_LOOP = "sleep2"          # 哄睡：睡着后持续循环
+_SLEEP_CATEGORIES = (_SLEEP_CATEGORY, _SLEEP_INTRO, _SLEEP_LOOP)
 _MOVE_CATEGORY = "move"
 _AWAKE_CATEGORY = "awake"
 _SHOWUP_CATEGORY = "showup"
-_SURPRISE_CATEGORY = "surprise"
 
 
 def state_of(category: str) -> str:
@@ -65,7 +67,6 @@ class Behavior(QObject):
         self._last_user_activity = clock()
         self._next_auto_at = clock()
         self._wander_chance: float | None = None
-        self._action_weights: dict[str, float] | None = None
         self._stopped = True
 
     # ------------------------------------------------------------ 只读属性
@@ -87,7 +88,7 @@ class Behavior(QObject):
         self._stopped = True
 
     def set_idle_category(self, category: str = "idle") -> None:
-        """换掉「待机」时播的分类（番茄钟专注期间换成 `think`）；正处在待机态就立即生效。"""
+        """换掉「待机」时播的分类（番茄钟专注换 `think`、上班换 `work`）；正待机就立即生效。"""
         if category == self._idle_category:
             return
         self._idle_category = category
@@ -100,6 +101,15 @@ class Behavior(QObject):
         只占 auto 级：露面是装饰，不该把用户点击 / 模块通知挡在外面。
         """
         return self.request(_SHOWUP_CATEGORY, priority, once=True)
+
+    def sleep(self, priority: int = PRIORITY_MODULE) -> bool:
+        """哄睡：先播一次 `sleep1` 作入场动画，播完由 `on_play_finished` 接 `sleep2` 持续循环。
+
+        两个分类都没素材时返回 False（调用方只弹气泡）。
+        """
+        if self.request(_SLEEP_INTRO, priority, once=False):
+            return True
+        return self.request(_SLEEP_LOOP, priority, once=False)
 
     # ------------------------------------------------------------ 状态请求
 
@@ -117,7 +127,7 @@ class Behavior(QObject):
         """
         if priority < self._priority:
             return False
-        waking = self._state == SLEEP and category != _SLEEP_CATEGORY
+        waking = self._state == SLEEP and category not in _SLEEP_CATEGORIES
         if not self._sprite.play(category):
             return False
         self._priority = priority
@@ -134,7 +144,12 @@ class Behavior(QObject):
 
     def on_user_click(self) -> None:
         self._last_user_activity = self._clock()
-        self.request("happy", PRIORITY_USER, once=True)
+        self.request("confuse", PRIORITY_USER, once=True)
+
+    def wake(self) -> None:
+        if self._state == SLEEP:
+            self._last_user_activity = self._clock()
+            self._to_idle()
 
     def on_fast_click(self) -> None:
         self._last_user_activity = self._clock()
@@ -158,15 +173,17 @@ class Behavior(QObject):
         """只播一次的素材播完了：回待机（仅当当前状态仍由该分类驱动）。
 
         散步是持续状态，素材播完不代表走完一圈（收尾交给 `on_stroll_finished`），
-        否则不可循环的散步素材会让噜噜半路停下。
+        否则不可循环的散步素材会让噜噜半路停下。哄睡的入场动画 `sleep1` 播完则接 `sleep2`。
         """
         if self._state_category != category or self._state == STROLL:
             return
         if self._state == state_of(self._idle_category):
             self.request(self._idle_category, PRIORITY_IDLE, once=False)  # 接着挑下一个待机素材
             return
-        if category == _SHOWUP_CATEGORY and self._play_after_showup():
-            return  # 刚露面，再补一个「惊喜」，随后照常回待机
+        if category == _SLEEP_INTRO:
+            if not self.request(_SLEEP_LOOP, self._priority, once=False):
+                self._to_idle()
+            return
         self._to_idle()
 
     def on_stroll_finished(self) -> None:
@@ -185,7 +202,7 @@ class Behavior(QObject):
             return
 
         idle_seconds = (now - self._last_user_activity).total_seconds()
-        if idle_seconds >= self._sleep_after():
+        if self._idle_category == "idle" and idle_seconds >= self._sleep_after():
             if self._chance(_SLEEP_CHANCE) and self.request("sleep", PRIORITY_AUTO, once=False):
                 return
             # 掷到不睡、或压根没有睡觉素材（`request` 返回 False）：按常规节奏走小动作。
@@ -202,37 +219,16 @@ class Behavior(QObject):
         """测试钩子：把自动行为里的随机判定固定为概率 p（1.0 = 必定触发）。"""
         self._wander_chance = float(p)
 
-    def set_action_weights(self, weights: dict[str, float] | None) -> None:
-        """给待机小动作加权（软影响：低数值时更偏向负面情绪）。
-
-        `None` 或空 dict 表示不加权，恢复等概率随机。权重只影响「先试哪个」的顺序，
-        抽到的分类缺素材仍会往后试，所以不会因为权重把某一轮空转掉。
-        """
-        self._action_weights = dict(weights) if weights else None
-
     def _auto_action(self, now: datetime) -> None:
         """做一次待机小动作。
 
-        抽到的分类没素材（`sad` / `bath` 目前是空的）就接着抽下一个，否则这一轮会白等
-        一整个 `idle_to_wander` 间隔什么都不发生。间隔先排上，避免每一 tick 重来。
+        抽到的分类没素材就接着试下一个，否则这一轮会白等一整个 `idle_to_wander` 间隔。
+        间隔先排上，避免每一 tick 重来。
         """
         self._next_auto_at = now + timedelta(seconds=self._wander_gap())
-        for category in self._action_order():
+        for category in _AUTO_ACTIONS:
             if self.request(category, PRIORITY_AUTO, once=True):
                 return
-
-    def _action_order(self) -> list[str]:
-        """待机小动作的尝试顺序：有权重时按权重不放回地抽，否则等概率打乱。"""
-        if not self._action_weights:
-            return self._rng.sample(_AUTO_ACTIONS, len(_AUTO_ACTIONS))
-        remaining = list(_AUTO_ACTIONS)
-        order: list[str] = []
-        while remaining:
-            weights = [max(1e-6, float(self._action_weights.get(c, 1.0))) for c in remaining]
-            picked = self._rng.choices(remaining, weights=weights, k=1)[0]
-            order.append(picked)
-            remaining.remove(picked)
-        return order
 
     def _insert_awake(self, max_ms: int) -> None:
         """刚睡醒：插播一次「醒觉」，播完（或到时）再回待机。
@@ -245,14 +241,6 @@ class Behavior(QObject):
         self._state_category = _AWAKE_CATEGORY
         self._state_until = self._clock() + timedelta(milliseconds=max_ms)
         self._set_state(AWAKE)
-
-    def _play_after_showup(self) -> bool:
-        """露面之后补一个「惊喜」；没素材就返回 False 让调用方照常回待机。
-
-        露面请求是模块级的，这里先把优先级松开，`surprise` 才播得动。
-        """
-        self._priority = PRIORITY_IDLE
-        return self.request(_SURPRISE_CATEGORY, PRIORITY_AUTO, once=True)
 
     def _to_idle(self) -> None:
         self._priority = PRIORITY_IDLE

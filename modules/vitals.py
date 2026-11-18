@@ -4,7 +4,8 @@
 所以关掉噜噜期间数值不会被扣（持久化只为下次启动接着用）。
 
 衰减速率与当下状态相关：
-- 上班中（`set_working`）：心情 / 活力衰减翻倍；
+- 上班中（`set_working`）：心情衰减翻倍；
+- 搬砖中（`set_bricklaying`）：活力衰减翻倍；
 - 睡觉中（`set_sleeping`）：活力不再往下掉，改为回升。
 
 数值一变就写回 `ctx.config`（`modules.vitals`），落盘按 60 秒节流，免得每秒写盘。
@@ -19,15 +20,12 @@ from typing import Callable
 from modules.base import MODULE_CLASSES, Module, ModuleContext
 from pet.config import get
 
-# 待机小动作分类（与 `pet.behavior._AUTO_ACTIONS` 一致）：低数值时给负面情绪加权
-_AUTO_ACTIONS = ("walk", "sad", "bath", "cry", "anxious", "surprise")
-
 _SAVE_INTERVAL_SECONDS = 60
 
 # 字段名 → (衰减速率配置键, 偏低时的文案, 通知分类)
 _LEVELS = (
-    ("mood", "mood_decay_per_hour", "噜噜心情好低落，来陪我玩会儿吧", "cry"),
-    ("energy", "energy_decay_per_hour", "噜噜累坏了，想眯一会儿", "sleep"),
+    ("mood", "mood_decay_per_hour", "噜噜心情好低落，来陪我玩会儿吧", "unhappy-idle"),
+    ("energy", "energy_decay_per_hour", "噜噜累坏了，想眯一会儿", "tired-idle"),
     ("satiety", "satiety_decay_per_hour", "噜噜饿扁啦，想吃东西", "eat"),
 )
 
@@ -51,6 +49,7 @@ class Vitals(Module):
         self._satiety = self._level("satiety", 80.0)
         self._sleeping = False
         self._working = False
+        self._bricklaying = False
         self._warned: set[str] = set()
         self._last = clock()
         self._last_save = clock()
@@ -78,31 +77,16 @@ class Vitals(Module):
     # ------------------------------------------------------------ 外部状态
 
     def set_working(self, on: bool) -> None:
-        """上班中：心情 / 活力衰减加倍。"""
+        """上班中：心情衰减加倍。"""
         self._working = bool(on)
+
+    def set_bricklaying(self, on: bool) -> None:
+        """搬砖中：活力衰减加倍。"""
+        self._bricklaying = bool(on)
 
     def set_sleeping(self, on: bool) -> None:
         """睡觉中：活力改为回升。"""
         self._sleeping = bool(on)
-
-    # ------------------------------------------------------------ 软影响
-
-    def action_weights(self) -> dict[str, float] | None:
-        """按当前数值给待机小动作加权；状态良好时返回 None（维持等概率）。"""
-        warn = self._number("warn_threshold", 30.0)
-        if self._mood >= warn and self._satiety >= warn and self._energy >= warn:
-            return None
-        weights = {name: 1.0 for name in _AUTO_ACTIONS}
-        if self._mood < warn:
-            weights["sad"] *= 3.0
-            weights["cry"] *= 3.0
-        if self._satiety < warn:
-            weights["anxious"] *= 3.0
-            weights["cry"] *= 2.0
-        if self._energy < warn:
-            weights["walk"] *= 0.3
-            weights["surprise"] *= 0.5
-        return weights
 
     # ------------------------------------------------------------ 恢复
 
@@ -131,16 +115,17 @@ class Vitals(Module):
         if elapsed <= 0:
             return
         hours = elapsed / 3600.0
-        mult = self._work_multiplier() if self._working else 1.0
+        mood_mult = self._work_multiplier() if self._working else 1.0
+        energy_mult = self._work_multiplier() if self._bricklaying else 1.0
 
-        self._mood = _clamp(self._mood - self._number("mood_decay_per_hour", 6.0) * hours * mult)
+        self._mood = _clamp(self._mood - self._number("mood_decay_per_hour", 6.0) * hours * mood_mult)
         if self._sleeping:
             self._energy = _clamp(
                 self._energy + self._number("energy_sleep_recover_per_hour", 30.0) * hours
             )
         else:
             self._energy = _clamp(
-                self._energy - self._number("energy_decay_per_hour", 8.0) * hours * mult
+                self._energy - self._number("energy_decay_per_hour", 8.0) * hours * energy_mult
             )
         self._satiety = _clamp(self._satiety - self._number("satiety_decay_per_hour", 10.0) * hours)
 

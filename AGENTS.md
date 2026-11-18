@@ -27,7 +27,7 @@
 
 ## 测试
 
-- 全量：`python -m pytest -q -p no:cacheprovider`（当前 **396** 个用例）。
+- 全量：`python -m pytest -q -p no:cacheprovider`（0.3.0 共 **408** 个用例）。
 - 本机 **不打印 `N passed` 汇总行**，判断全绿看**退出码是否为 0**；
   用例数用 `--collect-only -q -p no:cacheprovider` 逐文件求和交叉确认。
 - 加 `-p no:cacheprovider` 避免在仓库留下 `.pytest_cache`。
@@ -35,20 +35,29 @@
 
 ## 素材管线
 
-- **素材必须提前去好背（自带 alpha）**。`process_gif()` 拿到没有 alpha 的素材会直接抛 `ValueError`，
-  计入 `report["failed"]` 并让 `prepare.py` 退出码为 1。这是刻意的硬门槛，**不要加卡片轨兜底或静默出片**。
+- **素材自带 alpha 就走透明轨，没去背的自动落卡片轨**：`process_gif()` 按首帧 alpha 判定，
+  没 alpha 不再算失败（`prepare.py` 退出码保持 0），而是记成 `card` 轨，
+  渲染层给它套一层圆角卡片把不透明背景框起来（`pet/sprite.render_frame`）。
 - 去背实现（`sample_background` / `remove_background` / `analyze_frame` / `grade` 等）保留在
   `tools_cli/gif_pipeline.py` 且有单测，但**已无调用方**；`--tol` / `--edge-min` 保留但不再生效。
 - 命名必须 `lulu_xxx.gif`；同图按 md5 去重；**删图后必须跑 `python tools_cli/assign.py --prune`**
   清掉 `categories.json` 与 `.index.json` 里的悬空引用（不清理 `.index.json` 会让同一张图重放时被去重跳过）。
-- **分类与循环打标走 `tools_cli/assign.py`**：清单是 CSV `file,category,loop`，可一张图写多行归多类；
+- **分类与循环打标走 `tools_cli/assign.py`**：清单是 CSV `file,category,loop,enable`，可一张图写多行归多类；
   清单里点名的素材先摘出原分类再归位，没点名的不动。**不要在 `categories.json` 里手工挪文件名**。
 - **是否可循环是素材属性**：`categories.json` 的 `loops`（文件名 → bool）决定素材循环还是只播一次，
   缺省视为可循环。`Sprite.play()` 只认素材属性，**不提供「强制播一次」的调用入口**；
   改循环行为要改素材属性，不要在调用方加特判。
-- **分类清单以 `pet/catalog.py` 的 `CATEGORIES` 为准**（`loops`/分类真相是 `categories.json`）：
+- **是否启用也是素材属性**：`categories.json` 的 `enabled`（文件名 → bool，缺省视为启用）决定素材是否启用。
+  `enable=false` 的素材 **不参与播放**（`catalog.pick()` 过滤掉），**打包时也被跳过**（`build.py` 的
+  `disabled_assets()` 同时作用于产物目录与 `latest.json` 的 `assets.files`，所以老用户不会下载到它，
+  但**不会**主动清理别人机器上的存量副本）。
+- **分类清单以 `pet/catalog.py` 的 `CATEGORIES` 为准**（`loops` / `enabled` / 分类真相是 `categories.json`）：
   加分类要同时补 `FALLBACK` 回退链、`assets/categories.json`（`default_categories()` 会补齐）与触发点，
   并记得**行为机 / 模块 / `main.py` 的触发点要一起接**，再补测试（`tests/test_catalog.py` 有回退链断言）。
+  `assets/assign_scenes.csv` 是场景需求表，不是运行时配置。`disable` 要删除对应触发点；
+  其他场景仍在用的分类或素材不能连带停用。待机小动作池只保留 `walk`。
+- **生活活动互斥**：`PetApp._activity()` 同时约束菜单和实际处理函数，拒绝的动作不能扣币、计薪或加心情。
+  桌面吹泡泡是 `ui/bubbles.py` 的透明穿透窗口，不是文字提示 `Toast`；退出动作要收起特效并停计时器。
 - `prepare.py --rebuild` 会从 1 重新编号导致既有分类错位，**不要随意使用**。
 
 ## 提交与发版
@@ -75,6 +84,8 @@
   之后任意一次 `show()`（如 `Sprite.show()`）直接 access violation，全量测试跑到一半整个进程崩掉，
   崩溃点看着和菜单毫无关系。菜单圆角用窗口 mask（`ui/menu.CardMenu`），
   卡片圆角走自绘 `ui/theme.draw_card()`。护栏：`tests/test_theme.py::test_menu_style_keeps_radius_off_the_menu_panel`。
+  该 mask **只能由 1 位位图 `QBitmap` 生成**：`QPainterPath.toFillPolygon().toPolygon()` 转出的多边形
+  喂给 `QRegion` 会以同样方式写坏堆（`setMask` 一个正矩形区域则没事）。
 - 气泡跟随统一订阅 `Sprite.moved` 信号，**不要在各个交互函数里分别补气泡位置**。
 - **置顶 ≠ 能压住任务栏**：噜噜是 `WS_EX_TOPMOST`，任务栏同属置顶层，走进任务栏那条带里会被压住。
   要贴着屏幕边走就用 `availableGeometry()`（工作区），别用 `geometry()`（整屏）。

@@ -1,19 +1,21 @@
-"""素材整理 CLI：按清单批量设置分类与「是否可循环」，并清理悬空引用。
+"""素材整理 CLI：按清单批量设置分类、「是否可循环」与「是否启用」，并清理悬空引用。
 
 用法::
 
     python tools_cli/assign.py --template assets/assign.csv   # 生成待填清单（列出现况）
-    python tools_cli/assign.py assets/assign.csv              # 按清单分类 + 打循环标
+    python tools_cli/assign.py assets/assign.csv              # 按清单分类 + 打循环标 + 打启用标
     python tools_cli/assign.py --prune                        # 清掉悬空引用（磁盘上已删的素材）
 
-清单是带表头的 CSV，三列 `file,category,loop`::
+清单是带表头的 CSV，`file` / `category` 两列必填，`loop` / `enable` 可选::
 
-    file,category,loop
-    lulu_001.gif,idle,true
-    lulu_003.gif,eat,false
-    lulu_003.gif,drink,false      # 一张图想同时归两个分类就写多行
+    file,category,loop,enable
+    lulu_001.gif,idle,true,true
+    lulu_003.gif,eat,false,true
+    lulu_003.gif,drink,false,true    # 一张图想同时归两个分类就写多行
+    lulu_002.gif,idle,,false         # 留空表示不动那一位
 
-`category` 必须是已知分类；`loop` 留空表示不动这张图的循环设置。
+`category` 必须是已知分类；`loop` / `enable` 留空表示不动这张图的对应设置。
+`enable=false` 的素材不参与播放，打包时也不带它。
 清单里出现过的文件会**先摘出原分类再按清单归位**，所以清单就是它们的最终归属；
 没出现在清单里的文件完全不受影响。
 """
@@ -32,11 +34,13 @@ from pet.catalog import (  # noqa: E402
     CATEGORIES,
     UNASSIGNED,
     assign_file,
+    enabled_of,
     forget_file,
     load_categories,
     loops_of,
     missing_files,
     save_categories,
+    set_enabled,
     set_loop,
 )
 from tools_cli.prepare import load_index, save_index  # noqa: E402
@@ -46,8 +50,8 @@ _TRUE = {"true", "1", "yes", "y", "on"}
 _FALSE = {"false", "0", "no", "n", "off"}
 
 
-def parse_loop(text: str) -> bool | None:
-    """解析清单里的 `loop` 列：留空返回 None（不改动），其余按 true / false 解析。"""
+def parse_flag(text: str, column: str = "loop") -> bool | None:
+    """解析清单里的布尔列：留空返回 None（不改动），其余按 true / false 解析。"""
     value = (text or "").strip().lower()
     if not value:
         return None
@@ -55,11 +59,16 @@ def parse_loop(text: str) -> bool | None:
         return True
     if value in _FALSE:
         return False
-    raise ValueError(f"无法识别的 loop 取值 {text!r}（用 true / false，留空表示不修改）")
+    raise ValueError(f"无法识别的 {column} 取值 {text!r}（用 true / false，留空表示不修改）")
 
 
-def read_manifest(path: Path) -> list[tuple[str, str, bool | None]]:
-    """读清单，返回 (文件名, 分类, 是否可循环 or None)；缺列或空文件直接报错。"""
+def parse_loop(text: str) -> bool | None:
+    """解析清单里的 `loop` 列。"""
+    return parse_flag(text, "loop")
+
+
+def read_manifest(path: Path) -> list[tuple[str, str, bool | None, bool | None]]:
+    """读清单，返回 (文件名, 分类, 是否可循环 or None, 是否启用 or None)。"""
     path = Path(path)
     with open(path, encoding="utf-8-sig", newline="") as fp:
         reader = csv.DictReader(fp)
@@ -68,13 +77,20 @@ def read_manifest(path: Path) -> list[tuple[str, str, bool | None]]:
             raise ValueError(
                 f"清单 {path} 必须含 file 与 category 两列，实际为 {reader.fieldnames}"
             )
-        rows: list[tuple[str, str, bool | None]] = []
+        rows: list[tuple[str, str, bool | None, bool | None]] = []
         for line in reader:
             item = {(k or "").strip().lower(): (v or "").strip() for k, v in line.items()}
             name, category = item.get("file", ""), item.get("category", "")
             if not name and not category:
                 continue  # 跳过空行
-            rows.append((name, category, parse_loop(item.get("loop", ""))))
+            rows.append(
+                (
+                    name,
+                    category,
+                    parse_loop(item.get("loop", "")),
+                    parse_flag(item.get("enable", ""), "enable"),
+                )
+            )
     return rows
 
 
@@ -109,11 +125,12 @@ def write_template(path: Path, processed_dir: Path, categories_path: Path) -> in
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as fp:
         writer = csv.writer(fp)
-        writer.writerow(["file", "category", "loop"])
+        writer.writerow(["file", "category", "loop", "enable"])
         for name in files:
             loop = "true" if loops_of(data, name) else "false"
+            enable = "true" if enabled_of(data, name) else "false"
             for category in home.get(name) or [UNASSIGNED]:
-                writer.writerow([name, category, loop])
+                writer.writerow([name, category, loop, enable])
     return len(files)
 
 
@@ -125,10 +142,17 @@ def run_assign(
     prune: bool = False,
     index_path: Path | None = None,
 ) -> dict:
-    """按清单归位素材、打循环标，并按需清理悬空引用；返回统计报告。"""
+    """按清单归位素材、打循环与启用标，并按需清理悬空引用；返回统计报告。"""
     categories_path, processed_dir = Path(categories_path), Path(processed_dir)
     data = load_categories(categories_path)
-    report = {"assigned": 0, "loops": 0, "pruned": 0, "pruned_index": 0, "skipped": []}
+    report = {
+        "assigned": 0,
+        "loops": 0,
+        "enabled": 0,
+        "pruned": 0,
+        "pruned_index": 0,
+        "skipped": [],
+    }
 
     if prune:
         for name in missing_files(data, processed_dir):
@@ -140,7 +164,8 @@ def run_assign(
     if manifest is not None:
         wanted: dict[str, set[str]] = {}
         loops: dict[str, bool] = {}
-        for name, category, loop in read_manifest(manifest):
+        enabled: dict[str, bool] = {}
+        for name, category, loop, enable in read_manifest(manifest):
             if category not in KNOWN:
                 report["skipped"].append({"file": name, "error": f"未知分类 {category!r}"})
                 continue
@@ -150,12 +175,17 @@ def run_assign(
             wanted.setdefault(name, set()).add(category)
             if loop is not None:
                 loops[name] = loop
+            if enable is not None:
+                enabled[name] = enable
         for name, categories in wanted.items():
             assign_file(data, name, sorted(categories))
             report["assigned"] += 1
         for name, loop in loops.items():
             set_loop(data, name, loop)
             report["loops"] += 1
+        for name, enable in enabled.items():
+            set_enabled(data, name, enable)
+            report["enabled"] += 1
 
     save_categories(categories_path, data)
     return report
@@ -164,6 +194,7 @@ def run_assign(
 def _print_report(report: dict) -> None:
     print(
         f"归位 {report['assigned']} 个素材，改写循环标记 {report['loops']} 个，"
+        f"改写启用标记 {report['enabled']} 个，"
         f"清理悬空引用 {report['pruned']} 个（索引 {report['pruned_index']} 条）"
     )
     for item in report["skipped"]:

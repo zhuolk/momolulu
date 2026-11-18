@@ -5,15 +5,14 @@
 并支持启动时自动检查的素材热更与主程序自动更新。
 
 - 仓库：<https://github.com/zhuolk/momolulu>
-- 当前版本：`0.2.4`（唯一来源 `pet/version.py` 的 `VERSION`）
+- 当前版本：`0.3.0`（见 `pet/version.py`）
 - 平台：Windows
 
 ## 特性
 
 - **GIF 动画挂件**：透明无边框、置顶，播放 `assets/processed/` 里的动图。
-- **行为状态机**：待机一段时间后随机触发小动作（走路 / 难过 / 洗澡 / 哭 / 焦虑 / 惊喜，等概率六选一），
-  带优先级抢占（用户点击 > 模块提醒 > 待机小动作）。
-- **表情细节**：启动后首次露面、以及从贴边隐藏里恢复时露一次脸（`showup`，紧接着补一个 `surprise`）；
+- **待机与点击**：闲下来会走动或入睡；单击露出疑惑表情，快速连点则生气。
+- **表情细节**：启动或从贴边隐藏恢复时播放 `showup`，结束后回到待机；
   睡觉被叫醒先演一次 `awake` 再回神；番茄钟专注期间一直「思考」（待机素材换成 `think`）；
   久坐提醒触发时动一动（`sport`）；拖拽时是 `move`（没这个素材就定格当前一帧）。
 - **自主走动**：待机久了会在桌面上慢慢走（约 40px/s），碰到屏幕边缘折返并转身。
@@ -58,7 +57,13 @@ python main.py
 
 - **显示 / 隐藏噜噜**、**交互模式 / 穿透模式**
 - **实用工具**：番茄钟、喝水提醒、久坐提醒、吃饭提醒、整点报时、番茄钟开始 / 暂停 · 跳过 · 重置
-- **搞搞震 ▸ 散步**
+- **搞搞震**：散步、听歌、吹泡泡，每次成功开始增加 5 点心情（上限 100）。泡泡从噜噜身边逐渐飘满当前屏幕，约 6 秒后淡出，不挡鼠标。
+- **睡觉**：点击入睡并恢复活力，再点一次叫醒。
+- **干饭**：西瓜花 5 币，饱腹和心情各加 20；汉堡花 30 币，两项各加 30。余额不足不能购买。
+- **打工**：上班和搬砖默认每分钟赚 1 币。上班加快心情消耗，搬砖加快活力消耗；点当前工种下班后才能换工种。
+
+这四项活动互斥：活动期间其他入口置灰，结束后重新开放。右键菜单顶部显示数值摘要，左键托盘图标可查看状态卡。
+
 - **立即更新到 x.y.z**（检测到新版时才出现）
 - **设置…**、**开机自启**、**关于**、**退出**
 
@@ -72,12 +77,12 @@ python main.py
   缺省（或旧版没有这字段）一律按可循环处理。
 - `assets/raw/`：原始采集件（不入库）。
 
-**素材必须提前去好背（自带 alpha）**：处理管线不再做去背，拿到没有 alpha 的素材会直接报错。
+管线不做去背：首帧自带透明度的素材走透明轨，不透明素材放进圆角卡片。`enabled=false` 的 GIF 不播放、不打包，也不列入自动更新清单。
 
 素材管线流程：
 
 ```powershell
-# 1. 去好背的 GIF 放入 assets/raw/
+# 1. 将 GIF 放入 assets/raw/
 python tools_cli/prepare.py            # 编号 / md5 去重 / 分类登记（高帧率素材需放宽参数）
 python tools_cli/contact_sheet.py      # 生成预览接触表，人工看图
 # 2. 生成待填清单，填好每张图的分类与是否可循环
@@ -86,20 +91,16 @@ python tools_cli/assign.py assets/assign.csv --prune   # 落盘，并清掉已�
 python tools_cli/build.py              # 打包
 ```
 
-清单是带表头的 CSV `file,category,loop`，一张图想归多个分类就写多行（如吃 / 喝共用一张），
-`loop` 填 `true` / `false`（留空表示不改动）。清单里点名的素材会先摘出原分类再按清单归位，
+清单是带表头的 CSV `file,category,loop,enable`，一张图想归多个分类就写多行（如吃 / 喝共用一张），
+`loop` 和 `enable` 填 `true` / `false`（留空表示不改动）。清单里点名的素材会先摘出原分类再按清单归位，
 没点名的完全不动。
 
-分类：`idle` `walk` `stroll` `sleep` `eat` `drink` `happy` `angry` `sad` `bath` `showup` `awake`
-`move` `think` `sport` `cry` `anxious` `surprise` `unassigned`（缺素材会按语义就近降级到 `idle`）。
-
-当前 26 张素材（`lulu_001~026.gif`）：`idle` 6、`happy` 3、`walk` 3、`angry` 3、`showup` 2、`awake` 2，
-`drink` / `move` / `think` / `sport` / `cry` / `anxious` / `surprise` 各 1；其中 6 张标为「只播一次」。
+0.3.0 有 27 个动作分类，另有 `unassigned`；分类与回退规则见 `pet/catalog.py`。41 张 GIF 中启用 30 张。散步只用 `stroll`，该类没有可用素材时不会开始散步。
 
 ## 开发
 
 ```powershell
-python -m pytest -q -p no:cacheprovider   # 全量测试（317 个用例）
+python -m pytest -q -p no:cacheprovider   # 0.3.0 共 408 个用例
 python tools_cli/build.py                 # 打包到 dist/momolulu/，产出 dist/momolulu-<版本>.zip 与 dist/latest.json
 ```
 

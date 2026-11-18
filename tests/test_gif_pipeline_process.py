@@ -1,13 +1,12 @@
 from pathlib import Path
 
-import pytest
 from PIL import Image
 
 from tools_cli.gif_pipeline import process_gif, resize_frame
 
 
 def make_gif(path: Path, size=(600, 600), frames=20, subject=(30, 130, 210)):
-    """造一张**已去背**（透明底 + 不透明主体）的素材：管线要求素材自带 alpha。"""
+    """造一张**已去背**（透明底 + 不透明主体）的素材：走透明轨。"""
     imgs = []
     for i in range(frames):
         im = Image.new("RGBA", size, (0, 0, 0, 0))
@@ -33,25 +32,26 @@ def test_process_gif_caps_size_fps_and_keeps_transparency(tmp_path):
     assert out.n_frames <= 13 and out.convert("RGBA").getpixel((0, 0))[3] == 0
 
 
-def test_process_gif_without_alpha_is_rejected(tmp_path):
-    """漏去背的素材直接报错，不兜底套卡片轨、也不静默出片。"""
+def test_process_gif_without_alpha_falls_back_to_card_track(tmp_path):
+    """漏去背的素材不再拒绝，改记成卡片轨（渲染层套圆角卡片遮掉背景）。"""
     src = tmp_path / "grad.gif"
     im = Image.new("RGB", (300, 300))
     for x in range(300):
         for y in range(300):
             im.putpixel((x, y), (x % 256, y % 256, (x * y) % 256))
     im.save(src, save_all=True, append_images=[im], duration=80)
-    with pytest.raises(ValueError, match="alpha"):
-        process_gif(src, tmp_path / "o.gif")
-    assert not (tmp_path / "o.gif").exists()
+    r = process_gif(src, tmp_path / "o.gif")
+    assert (r["track"], r["has_alpha"]) == ("card", False)
+    assert (tmp_path / "o.gif").exists()
 
 
-def test_process_gif_solid_background_is_rejected(tmp_path):
-    """纯色底但没去背的素材同样必须报错。"""
+def test_process_gif_solid_background_also_goes_to_card_track(tmp_path):
+    """纯色底但没去背的素材同样走卡片轨。"""
     src = tmp_path / "solid.gif"
     Image.new("RGB", (300, 300), (255, 255, 255)).save(src)
-    with pytest.raises(ValueError, match="alpha"):
-        process_gif(src, tmp_path / "s.gif")
+    r = process_gif(src, tmp_path / "s.gif")
+    assert r["track"] == "card" and r["has_alpha"] is False
+    assert (tmp_path / "s.gif").exists()
 
 
 def test_process_gif_existing_alpha_stays_transparent(tmp_path):

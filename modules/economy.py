@@ -1,10 +1,11 @@
-"""噜噜币与上班：上班按分钟攒币，币用来在商店买食物。
+"""噜噜币与打工：上班 / 搬砖都按分钟攒币，币用来在商店买食物。
 
 模块只负责「攒币 / 扣币」；食物补的是心情与饱腹（属于数值模块的职责），
 两者的耦合留在 `main.py` 牵线，模块之间不互相引用。
 
-上班来源有两处，任一为真即算在上班：菜单手动开关（`start_work` / `stop_work`）
-与番茄钟专注联动（`set_focus`）。
+进账来源有三处，任一为真即算在赚币：菜单手动开关的上班（`start_work` / `stop_work`）、
+搬砖（`start_bricklay` / `stop_bricklay`）与番茄钟专注联动（`set_focus`）。
+上班与搬砖的区别只在视觉与数值消耗（上班耗心情、搬砖耗活力），计薪口径一致。
 """
 
 from __future__ import annotations
@@ -17,9 +18,8 @@ from pet.config import get
 
 # key, 名称, 价格（噜噜币）, 饱腹 +, 心情 +
 FOODS = (
-    ("ice_cream", "冰淇淋", 10, 10, 10),
-    ("cake", "蛋糕", 20, 20, 20),
-    ("burger", "汉堡", 30, 30, 30),
+    ("watermelon", "西瓜", 5, 20, 20),
+    ("hamburger", "汉堡", 30, 30, 30),
 )
 FOOD_BY_KEY = {item[0]: item for item in FOODS}
 
@@ -38,6 +38,7 @@ class Economy(Module):
         self._clock = clock
         self._coins = self._read_coins()
         self._manual_work = False
+        self._manual_bricklay = False
         self._focus = False
         self._last = clock()
         self._last_save = clock()
@@ -55,14 +56,25 @@ class Economy(Module):
         return self._manual_work or self._focus
 
     @property
+    def bricklaying(self) -> bool:
+        return self._manual_bricklay
+
+    @property
+    def earning(self) -> bool:
+        """是否正在赚币（上班或搬砖任一为真）。"""
+        return self.working or self._manual_bricklay
+
+    @property
     def earned(self) -> int:
-        """当前这一班已赚的币（没上班时为 0）。"""
-        if not self.working:
+        """当前这一班已赚的币（没在赚币时为 0）。"""
+        if not self.earning:
             return 0
         return max(0, int(self._coins - self._shift_start_coins))
 
     def status_text(self) -> str:
         """托盘悬停里显示的一行。"""
+        if self._manual_bricklay:
+            return f"搬砖中 · 已赚 {self.earned} 噜噜币"
         if self.working:
             return f"上班中 · 已赚 {self.earned} 噜噜币"
         return f"噜噜币 {int(self._coins)}"
@@ -70,6 +82,8 @@ class Economy(Module):
     # ------------------------------------------------------------ 控制
 
     def start_work(self) -> None:
+        if self.bricklaying:
+            return
         self._manual_work = True
         self._refresh_shift()
 
@@ -77,9 +91,19 @@ class Economy(Module):
         self._manual_work = False
         self._refresh_shift()
 
+    def start_bricklay(self) -> None:
+        if self.working:
+            return
+        self._manual_bricklay = True
+        self._refresh_shift()
+
+    def stop_bricklay(self) -> None:
+        self._manual_bricklay = False
+        self._refresh_shift()
+
     def set_focus(self, on: bool) -> None:
         """番茄钟专注联动上班（幂等）。"""
-        on = bool(on)
+        on = bool(on) and not self.bricklaying
         if on == self._focus:
             return
         self._focus = on
@@ -110,7 +134,7 @@ class Economy(Module):
         self._refresh_shift()
         elapsed = (now - self._last).total_seconds()
         self._last = now
-        if not self.working or elapsed <= 0:
+        if not self.earning or elapsed <= 0:
             return
         self._coins += elapsed / 60.0 * self._rate()
         self._persist()
@@ -121,12 +145,12 @@ class Economy(Module):
     # ------------------------------------------------------------ 内部
 
     def _refresh_shift(self) -> None:
-        """进出上班的沿：记下这一班的起始币数，并立即落盘。"""
-        now_working = self.working
-        if now_working == self._was_working:
+        """进出「赚币」的沿：记下这一班的起始币数，并立即落盘。"""
+        now_earning = self.earning
+        if now_earning == self._was_working:
             return
-        self._was_working = now_working
-        if now_working:
+        self._was_working = now_earning
+        if now_earning:
             self._shift_start_coins = self._coins
         self._persist(force=True)
 

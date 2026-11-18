@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,7 @@ from pet.updater import LATEST_URL
 from pet.version import VERSION
 from pet.wander import Wanderer
 from pet.winutil import acquire_single_instance, is_foreground_fullscreen, should_hide_pet
+from ui.bubbles import BubbleOverlay
 from ui.menu import MenuState, build_menu
 from ui.settings_dialog import SettingsDialog
 from ui.status_card import StatusCard
@@ -45,10 +47,15 @@ _TICK_MS = 100
 _FS_CHECK_MS = 1000
 _MODULE_TICK_MS = 1000
 _TOAST_MS = 6000
+_PLAY_MOOD = 5
 _UPDATE_CHECK_DELAY_MS = 5000
 
 # 模块通知的备用分类（缺该类素材时退一级）
 CATEGORY_FALLBACK = {"drink": "eat"}
+
+# 喂食后的小概率节目：吃完全拉一泡，循环播一会儿再回待机
+_SHIT_CHANCE = 0.3
+_SHIT_MS = 180_000
 
 # 菜单开关 → 配置文件里的模块键（喝水与久坐共用 health_reminder）
 MODULE_KEYS = {
@@ -132,6 +139,7 @@ class PetApp:
             bounds_provider=self._work_areas,
         )
         self.toast = Toast()
+        self.bubbles = BubbleOverlay()
         self.status_card = StatusCard()
 
         self._save_timer = QTimer()
@@ -158,7 +166,8 @@ class PetApp:
         self._autostart = sync(bool(self.config.get("autostart", False)), self._autostart_command)
         self._drag_active = False
         self._hidden_by_fullscreen = False
-        self._focus_playing = False
+        self._idle_category = "idle"
+        self._after_meal = False
         self._shutdown_done = False
         self._wire_signals()
         self._start_ui()
@@ -234,6 +243,7 @@ class PetApp:
         info = self._update_info
         pending = info.get("version") if isinstance(info, dict) and info.get("package") else None
         return MenuState(
+            activity=self._activity(),
             visible=self.sprite.isVisible(),
             passthrough=bool(self.config.get("pet", {}).get("passthrough", False)),
             autostart=self._autostart,
@@ -241,6 +251,7 @@ class PetApp:
             pomodoro_running=bool(getattr(pomodoro, "running", False)),
             update_version=pending,
             working=bool(economy.working) if economy is not None else False,
+            bricklaying=bool(economy.bricklaying) if economy is not None else False,
             foods=tuple(
                 (key, label, price, coins >= price)
                 for key, label, price, _satiety, _mood in FOODS
@@ -262,10 +273,12 @@ class PetApp:
             "toggle_module": self._toggle_module,
             "pomodoro": self._pomodoro,
             "stroll": self._start_stroll,
+            "bubble": self._blow_bubble,
+            "music": self._listen_music,
             "toggle_work": self._toggle_work,
+            "toggle_bricklay": self._toggle_bricklay,
             "soothe": self._soothe,
             "buy_food": self._buy_food,
-            "show_status": self._show_status_card,
             "open_settings": self._open_settings,
             "toggle_autostart": self._toggle_autostart,
             "update_now": self._update_now,
@@ -285,6 +298,7 @@ class PetApp:
         self._hidden_by_fullscreen = False
         if self.sprite.isVisible():
             self.sprite.hide()
+            self.bubbles.stop()
             self.toast.hide()
             self.status_card.hide()
         else:
@@ -328,10 +342,31 @@ class PetApp:
             module.skip()
         elif action == "reset":
             module.reset()
+        self._sync_life()
+
+    def _activity(self) -> str | None:
+        """从实际的班次和动画取当前活动，结束或被拖动打断后自动解锁。"""
+        economy = self.modules.get("economy")
+        if economy is not None and economy.earning:
+            return "work"
+        state = self.behavior.state
+        if state == SLEEP:
+            return "sleep"
+        if state in (STROLL, "BUBBLE", "MUSIC"):
+            return "play"
+        if state in ("WATERMELON", "HAMBURGER", "SHIT"):
+            return "food"
+        return None
+
+    def _reward_play(self) -> None:
+        vitals = self.modules.get("vitals")
+        if vitals is not None:
+            vitals.feed(satiety=0, mood=_PLAY_MOOD)
+            self._update_status()
 
     def _start_stroll(self) -> None:
         """搞搞震 ▸ 散步：瞬移到当前屏的右下角，沿屏幕边缘逆时针走一圈。"""
-        if self.stroller.active:
+        if self._activity() or self.stroller.active:
             return
         if not self.behavior.request("stroll", PRIORITY_MODULE, once=False):
             return
@@ -340,41 +375,83 @@ class PetApp:
         self.edge_hider.detach()
         if not started:
             self.behavior.on_stroll_finished()
+        else:
+            self._reward_play()
+
+    def _blow_bubble(self) -> None:
+        """搞搞震 ▸ 吹泡泡：从噜噜身旁向所在屏幕吹出泡泡。"""
+        if not self._activity() and self.behavior.request("bubble", PRIORITY_MODULE, max_ms=_TOAST_MS):
+            origin = self.sprite.mapToGlobal(self.sprite.rect().center())
+            screen = self.app.screenAt(origin) or self.sprite.screen()
+            if self.sprite.isVisible() and not self.edge_hider.is_hidden and screen:
+                self.bubbles.start(screen.geometry(), origin, _TOAST_MS)
+            self._reward_play()
+
+    def _listen_music(self) -> None:
+        """搞搞震 ▸ 听歌。"""
+        if not self._activity() and self.behavior.request("music", PRIORITY_MODULE, max_ms=_TOAST_MS):
+            self._reward_play()
 
     # ------------------------------------------------------------ 照顾噜噜
 
     def _toggle_work(self, on: bool) -> None:
-        """照顾噜噜 ▸ 上班 / 下班：手动开关上班（与番茄钟联动是「或」的关系）。"""
+        """打工 ▸ 上班 / 下班：手动开关上班（与番茄钟联动是「或」的关系）。"""
         economy = self.modules.get("economy")
-        if economy is None:
+        if economy is None or (on and self._activity()):
             return
         if on:
             economy.start_work()
             self._show_toast("噜噜去上班啦，努力赚噜噜币～")
         else:
             economy.stop_work()
+            pomodoro = self.modules.get("pomodoro")
+            if pomodoro and pomodoro.enabled and pomodoro.running and pomodoro.phase == FOCUS:
+                pomodoro.toggle()  # 专注联动的班次随下班一起暂停
             self._show_toast("噜噜下班啦，辛苦咯～")
         self._sync_life()
 
+    def _toggle_bricklay(self, on: bool) -> None:
+        """打工 ▸ 搬砖：手动开关搬砖（搬砖时活力衰减加倍）。"""
+        economy = self.modules.get("economy")
+        if economy is None or (on and self._activity()):
+            return
+        if on:
+            economy.start_bricklay()
+            self._show_toast("噜噜去搬砖啦，出力换噜噜币～")
+        else:
+            economy.stop_bricklay()
+            self._show_toast("噜噜搬完砖，歇一会儿～")
+        self._sync_life()
+
     def _soothe(self) -> None:
-        """照顾噜噜 ▸ 哄睡：直接把噜噜哄睡（睡着时活力回升）。"""
-        self._show_toast("拍拍噜噜，乖乖睡觉～")
-        self.behavior.request("sleep", PRIORITY_MODULE, once=False)
+        """睡觉是一级开关，再点一次叫醒。"""
+        if self._activity() == "sleep":
+            self.behavior.wake()
+        elif not self._activity() and self.behavior.sleep():
+            self._show_toast("拍拍噜噜，乖乖睡觉～")
 
     def _buy_food(self, key: str) -> None:
-        """照顾噜噜 ▸ 喂食 ▸ 某食物：先扣币，再让数值模块补饱腹与心情。"""
+        """干饭：余额足够且能开始吃饭才扣款、补数值。"""
         economy = self.modules.get("economy")
         vitals = self.modules.get("vitals")
         food = FOOD_BY_KEY.get(key)
-        if economy is None or vitals is None or food is None:
+        if self._activity() or economy is None or vitals is None or food is None:
             return
         _, label, price, satiety, mood = food
-        if not economy.spend(price):
+        if economy.coins < price:
             self._show_toast("噜噜币不够啦，先去上班赚一点吧～")
             return
+        if not self.behavior.request(key, PRIORITY_MODULE, max_ms=_TOAST_MS):
+            return
+        economy.spend(price)
+        self._after_meal = random.random() < _SHIT_CHANCE
         vitals.feed(satiety=satiety, mood=mood)
-        self._module_notify(f"噜噜吃了{label}，好满足～", "eat")
+        self._show_toast(f"噜噜吃了{label}，好满足～")
         self._sync_life()
+
+    def _start_shit(self) -> None:
+        """喂食派生的小节目：循环播一会儿拉屎动画再回待机。"""
+        self.behavior.request("shit", PRIORITY_MODULE, once=True, max_ms=_SHIT_MS)
 
     def _open_settings(self) -> None:
         """打开设置面板；保存后立即生效。"""
@@ -436,6 +513,7 @@ class PetApp:
             if self.sprite.isVisible():
                 self._hidden_by_fullscreen = True
                 self.sprite.hide()
+                self.bubbles.stop()
                 self.toast.hide()
             return
         if self._hidden_by_fullscreen:
@@ -444,6 +522,7 @@ class PetApp:
 
     def _on_screens_changed(self, *_args) -> None:
         """屏幕增删后把噜噜夹回可见范围；贴边隐藏状态下按新屏幕重新缩回。"""
+        self.bubbles.stop()
         screens = self._screens()
         if not screens:
             return
@@ -461,18 +540,32 @@ class PetApp:
 
     def _on_edge_hidden_changed(self, hidden: bool) -> None:
         """从贴边隐藏里重新露面时播一次 `showup`（缩回时 `hidden=True`，不播）。"""
-        if not hidden:
+        if hidden:
+            self.bubbles.stop()
+        else:
             self.behavior.play_showup()
 
     def _on_behavior_state(self, state: str) -> None:
         """把「是否在睡觉」告诉数值模块：睡着时活力改为回升。"""
+        if state != "BUBBLE" and self.bubbles.isVisible():
+            self.bubbles.stop()
         vitals = self.modules.get("vitals")
         if vitals is not None:
             vitals.set_sleeping(state == SLEEP)
+        if self._after_meal:
+            self._after_meal = False
+            if state == "IDLE":  # 只在正常吃完时续播，被打断就取消
+                self._start_shit()
 
     def _play_showup(self) -> None:
-        """启动后第一次露面：播一次 `showup`（随后由行为机接一个 `surprise`）。"""
+        """启动后第一次露面：播一次 `showup`。"""
         self.behavior.play_showup()
+
+    def _celebrate_birthday(self) -> None:
+        """12 月 24 日生日当天：启动时让噜噜播一次 `birthday`。"""
+        today = self.clock()
+        if (today.month, today.day) == (12, 24):
+            self._module_notify("噜噜生日快乐～今天也要开开心心", "birthday")
 
     # ------------------------------------------------------------ 实用模块
 
@@ -496,6 +589,8 @@ class PetApp:
     ) -> None:
         """模块通知：弹气泡 + 让噜噜播对应分类的动图（缺素材时退一级）。"""
         self._show_toast(text, duration_ms=duration_ms)
+        if self._activity():
+            return
         if self.behavior.request(category, PRIORITY_MODULE, once=True, max_ms=duration_ms):
             return
         fallback = CATEGORY_FALLBACK.get(category)
@@ -514,12 +609,11 @@ class PetApp:
         self._sync_life()
 
     def _sync_life(self) -> None:
-        """把番茄钟 / 上班 / 数值三方在宿主这里牵线（模块之间不互相引用）。
+        """把番茄钟 / 打工 / 数值三方在宿主这里牵线（模块之间不互相引用）。
 
         - 番茄钟专注联动上班；
-        - 上班状态推给数值模块（心情 / 活力衰减加倍）；
-        - 专注或上班都算「在忙」，待机素材换成 `think`；
-        - 数值偏低时给行为机一张权重表（软影响待机小动作）。
+        - 上班只加速心情衰减、搬砖只加速活力衰减，分别推给数值模块；
+        - 专注 / 上班 / 搬砖各有自己的待机素材（`think` / `work` / `bricklay`）。
         """
         pomodoro = self.modules.get("pomodoro")
         focusing = bool(
@@ -530,23 +624,25 @@ class PetApp:
         )
         economy = self.modules.get("economy")
         if economy is not None:
-            economy.set_focus(focusing)
+            economy.set_focus(focusing and self._activity() in (None, "work"))
         working = bool(economy is not None and economy.working)
+        bricklaying = bool(economy is not None and economy.bricklaying)
         vitals = self.modules.get("vitals")
         if vitals is not None:
             vitals.set_working(working)
-        busy = focusing or working
-        if busy != self._focus_playing:
-            self._focus_playing = busy
-            self.behavior.set_idle_category("think" if busy else "idle")
-        self._sync_action_weights()
+            vitals.set_bricklaying(bricklaying)
+        if focusing and working:
+            idle_cat = "think"
+        elif working:
+            idle_cat = "work"
+        elif bricklaying:
+            idle_cat = "bricklay"
+        else:
+            idle_cat = "idle"
+        if idle_cat != self._idle_category:
+            self._idle_category = idle_cat
+            self.behavior.set_idle_category(idle_cat)
         self._update_status()
-
-    def _sync_action_weights(self) -> None:
-        """数值模块给出的权重表推给行为机；模块停用或状态良好时为 `None`（等概率）。"""
-        vitals = self.modules.get("vitals")
-        weights = vitals.action_weights() if vitals is not None and vitals.enabled else None
-        self.behavior.set_action_weights(weights)
 
     def _update_status(self) -> None:
         """托盘悬停：数值一段 + 噜噜币 / 上班一段，由宿主拼起来（避免两个模块互相覆盖）。"""
@@ -561,7 +657,7 @@ class PetApp:
     # ------------------------------------------------------------ 状态卡
 
     def _show_status_card(self, anchor: tuple[int, int] | None = None) -> None:
-        """弹出数值状态卡（托盘左键单击 / 菜单「看看状态」）。"""
+        """弹出数值状态卡（托盘左键单击）。"""
         if not self._fill_status_card():
             return
         self.status_card.show_near(*(anchor or self._pet_anchor()))
@@ -582,7 +678,7 @@ class PetApp:
             energy=vitals.energy,
             satiety=vitals.satiety,
             coins=economy.coins,
-            working=economy.working,
+            working=economy.earning,
             earned=economy.earned,
         )
         return True
@@ -703,6 +799,7 @@ class PetApp:
         self._fs_timer.start()
         if not self.edge_hider.is_hidden:  # 直接以贴边隐藏形态启动时不算「露面」
             self._play_showup()
+        self._celebrate_birthday()
         if pick(self.catalog, "idle", self.processed_dir) is None:
             print("assets/processed 为空，请先运行 tools_cli/prepare.py")
 
@@ -739,6 +836,7 @@ class PetApp:
         if self._shutdown_done:
             return
         self._shutdown_done = True
+        self.bubbles.stop()
         self._tick_timer.stop()
         self._fs_timer.stop()
         self._module_timer.stop()

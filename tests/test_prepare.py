@@ -5,7 +5,7 @@ from pet.catalog import load_categories
 
 
 def make_gif(path: Path, color=(30, 130, 210), frames=6):
-    # 管线要求素材**预先去背**：透明底 + 不透明主体，漏去背会被判失败
+    # 已去背的素材：透明底 + 不透明主体，走透明轨
     imgs = []
     for _ in range(frames):
         im = Image.new("RGBA", (400, 400), (0, 0, 0, 0))
@@ -75,16 +75,16 @@ def test_run_prepare_records_broken_file_and_continues(tmp_path):
     assert rep["processed"] == 1 and [f["file"] for f in rep["failed"]] == ["broken.gif"]
 
 
-def test_run_prepare_reports_missing_alpha_as_failed(tmp_path):
-    """漏去背（无 alpha）的素材计为失败并点名，不静默出片。"""
+def test_run_prepare_puts_unbacked_asset_on_card_track(tmp_path):
+    """没去背（无 alpha）的素材不再判失败，改记成卡片轨入库。"""
     raw, out, cats, idx = dirs(tmp_path)
     make_gif(raw / "ok.gif")
     Image.new("RGB", (400, 400), (255, 255, 255)).save(raw / "zzz_nomatte.gif")
     rep = run_prepare(raw, out, cats, idx)
-    assert rep["processed"] == 1
-    assert [f["file"] for f in rep["failed"]] == ["zzz_nomatte.gif"]
-    assert "alpha" in rep["failed"][0]["error"]
-    assert [p.name for p in out.glob("*.gif")] == ["lulu_001.gif"]
+    assert rep["processed"] == 2 and rep["failed"] == []
+    assert (rep["easy"], rep["card"]) == (1, 1)
+    assert [p.name for p in sorted(out.glob("*.gif"))] == ["lulu_001.gif", "lulu_002.gif"]
+    assert load_categories(cats)["tracks"]["lulu_002.gif"] == "card"
 
 
 def test_run_prepare_sample_limits_and_reports_sizes(tmp_path):

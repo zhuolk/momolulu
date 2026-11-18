@@ -3,8 +3,7 @@ from pet.behavior import Behavior, PRIORITY_AUTO, PRIORITY_MODULE, PRIORITY_USER
 from pet.config import DEFAULTS
 
 # 待机随机小动作可能落到的状态（`_AUTO_ACTIONS` 各分类的大写名）
-_AUTO_STATES = ("WANDER", "SAD", "BATH", "CRY", "ANXIOUS", "SURPRISE")
-_AUTO_CATEGORIES = ("walk", "sad", "bath", "cry", "anxious", "surprise")
+_AUTO_STATES = ("WANDER",)
 
 
 class FakeSprite:
@@ -49,7 +48,7 @@ def test_module_event_overrides_auto_and_blocks_lower(qapp):
 
 def test_user_overrides_auto_but_not_module(qapp):
     b, sp, _ = make()
-    b.request("bath", PRIORITY_AUTO)
+    b.request("walk", PRIORITY_AUTO)
     assert b.request("happy", PRIORITY_USER) is True and b.state == "HAPPY"
     b.request("eat", PRIORITY_MODULE)
     assert b.request("happy", PRIORITY_USER) is False and b.state == "EAT"
@@ -111,15 +110,37 @@ def test_awake_ends_by_timer_when_the_asset_keeps_looping(qapp):
     assert sp.played[-3:] == ["happy", "awake", "idle"]
 
 
-def test_showup_is_followed_by_surprise(qapp):
-    """刚露面：`showup` 播完接一个「惊喜」，再回待机。"""
+def test_showup_returns_to_idle_after_finish(qapp):
+    """刚露面：`showup` 播完就回待机（不再补一个「惊喜」）。"""
     b, sp, _ = make()
     assert b.play_showup() is True
     assert b.state == "SHOWUP" and sp.played[-1] == "showup"
     b.on_play_finished("showup")
-    assert b.state == "SURPRISE" and sp.played[-1] == "surprise"
-    b.on_play_finished("surprise")
-    assert b.state == "IDLE"
+    assert b.state == "IDLE" and sp.played[-1] == "idle"
+
+
+def test_soothe_plays_intro_then_loops_the_sleep_loop(qapp):
+    """哄睡：先播一次 `sleep1` 作入场动画，播完接 `sleep2` 持续循环。"""
+    b, sp, _ = make()
+    assert b.sleep() is True
+    assert b.state == "SLEEP" and sp.played[-1] == "sleep1"
+    b.on_play_finished("sleep1")
+    assert b.state == "SLEEP" and sp.played[-1] == "sleep2"
+
+
+def test_soothe_falls_back_to_the_loop_when_intro_is_missing(qapp):
+    """没有入场素材时直接循环 `sleep2`。"""
+
+    class NoIntroSprite(FakeSprite):
+        def play(self, category):
+            self.played.append(category)
+            return category != "sleep1"
+
+    clock, sp = Clock(), NoIntroSprite()
+    b = Behavior(sp, DEFAULTS, clock=clock)
+    b.start()
+    assert b.sleep() is True
+    assert b.state == "SLEEP" and sp.played[-1] == "sleep2"
 
 
 def test_focus_mode_swaps_the_idle_category(qapp):
@@ -141,10 +162,20 @@ def test_focus_mode_keeps_the_idle_machinery_alive(qapp):
     assert b.state in _AUTO_STATES
 
 
-def test_click_plays_happy_once_and_fast_click_plays_angry(qapp):
+def test_work_modes_never_auto_sleep(qapp):
+    for category in ("think", "work", "bricklay"):
+        b, sp, clock = make()
+        b.set_idle_category(category)
+        b.force_wander_chance(1.0)
+        clock.adv(hours=1)
+        b.tick(clock())
+        assert "sleep" not in sp.played
+
+
+def test_click_plays_confuse_once_and_fast_click_plays_angry(qapp):
     b, sp, _ = make()
     b.on_user_click()
-    assert b.state == "HAPPY" and sp.played[-1] == "happy"
+    assert b.state == "CONFUSE" and sp.played[-1] == "confuse"
     b.on_fast_click()
     assert b.state == "ANGRY"
 
@@ -188,8 +219,8 @@ def test_auto_wander_after_interval_and_user_activity_resets_sleep_timer(qapp):
     b.force_wander_chance(0.0)  # 先专测待机小动作：别掷成睡觉
     clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
     b.tick(clock())
-    assert b.state in _AUTO_STATES   # 待机小动作：走 / 难过 / 洗澡 / 哭 / 焦虑 / 惊喜
-    b.on_user_click(); b.on_play_finished("happy")
+    assert b.state in _AUTO_STATES   # 待机小动作：现在只剩走路
+    b.on_user_click(); b.on_play_finished("confuse")
     b.force_wander_chance(1.0)      # 之后固定成「掷到睡觉」，验证 800s 还没到点
     clock.adv(seconds=800); b.tick(clock())
     assert b.state != "SLEEP"      # 用户操作重置了睡眠计时：800s < 900s 不应入睡
@@ -222,7 +253,7 @@ def test_missing_sleep_asset_keeps_the_calm_cadence(qapp):
 
 
 def test_auto_action_skips_categories_without_assets(qapp):
-    """抽到的分类没素材（`sad` / `bath` 现在都是空的）就接着抽下一个，不能白等一整个间隔。"""
+    """抽到的分类没素材（`walk` 现在只有 lulu_006，且已 enable=false）就接着抽下一个，不能白等一整个间隔。"""
     class SparseSprite(FakeSprite):
         def play(self, category):
             self.played.append(category)
@@ -269,45 +300,3 @@ def test_stroll_finished_ignored_when_other_state_took_over(qapp):
     b.on_drag_started()
     b.on_stroll_finished()
     assert b.state == "DRAGGED"
-
-
-def test_unweighted_action_order_is_a_full_permutation(qapp):
-    b, sp, _ = make()
-    assert sorted(b._action_order()) == sorted(_AUTO_CATEGORIES)
-
-
-def test_action_weights_bias_which_category_is_tried_first(qapp):
-    """权重把某一类抬到极高时，它基本排在最前（软影响低数值时的情绪）。"""
-    b, sp, _ = make()
-    b.set_action_weights({"sad": 1e9})
-    assert b._action_order()[0] == "sad"
-    assert sorted(b._action_order()) == sorted(_AUTO_CATEGORIES)
-
-
-def test_clearing_action_weights_restores_equal_chance(qapp):
-    b, sp, _ = make()
-    b.set_action_weights({"sad": 3.0})
-    b.set_action_weights(None)
-    assert b._action_weights is None
-    b.set_action_weights({"sad": 3.0})
-    b.set_action_weights({})  # 空表同样视为不加权
-    assert b._action_weights is None
-
-
-def test_weighted_order_still_tries_every_category(qapp):
-    """权重把唯一有素材的分类压到最低时，仍要顺着整张序表找到它，不能空转一轮。"""
-
-    class SparseSprite(FakeSprite):
-        def play(self, category):
-            self.played.append(category)
-            return category == "walk"
-
-    clock, sp = Clock(), SparseSprite()
-    b = Behavior(sp, DEFAULTS, clock=clock)
-    b.start()
-    b.set_action_weights({"walk": 1e-6})
-    b.force_wander_chance(0.0)  # 别掷成睡觉
-
-    clock.adv(seconds=DEFAULTS["pet"]["state_intervals"]["idle_to_wander"][1] + 1)
-    b.tick(clock())
-    assert b.state == "WANDER"

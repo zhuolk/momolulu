@@ -233,7 +233,7 @@ def test_buy_food_spends_coins_and_feeds_the_pet(qapp, tmp_path):
     save_config(root / "config.json", cfg)
 
     app = PetApp(root=root)
-    app._menu_handlers()["buy_food"]("burger")
+    app._menu_handlers()["buy_food"]("hamburger")
 
     assert app.modules["economy"].coins == 70      # 100 - 30
     assert app.modules["vitals"].satiety == 80     # 50 + 30
@@ -244,7 +244,7 @@ def test_buy_food_spends_coins_and_feeds_the_pet(qapp, tmp_path):
 def test_buy_food_without_coins_changes_nothing(qapp, tmp_path):
     app = PetApp(root=build_root(tmp_path))
     before = app.modules["vitals"].satiety
-    app._menu_handlers()["buy_food"]("ice_cream")
+    app._menu_handlers()["buy_food"]("watermelon")
     assert app.modules["economy"].coins == 0
     assert app.modules["vitals"].satiety == before
     app.shutdown()
@@ -256,7 +256,7 @@ def test_work_toggle_drives_economy_and_working_decay(qapp, tmp_path):
 
     handlers["toggle_work"](True)
     assert app.modules["economy"].working is True
-    assert app.modules["vitals"]._working is True  # 上班时心情 / 活力衰减加倍
+    assert app.modules["vitals"]._working is True  # 上班只加速心情衰减
 
     handlers["toggle_work"](False)
     assert app.modules["economy"].working is False
@@ -264,11 +264,71 @@ def test_work_toggle_drives_economy_and_working_decay(qapp, tmp_path):
     app.shutdown()
 
 
+def test_bubble_effect_respects_work_and_stops_on_drag(qapp, tmp_path):
+    app = PetApp(root=build_root(tmp_path))
+    try:
+        app._toggle_work(True)
+        app._blow_bubble()
+        assert not app.bubbles.isVisible()
+        app._toggle_work(False)
+        app._blow_bubble()
+        assert app.bubbles.isVisible() and app.behavior.state == "BUBBLE"
+        app.behavior.on_drag_started()
+        assert not app.bubbles.isVisible()
+    finally:
+        app.shutdown()
+
+
 def test_soothe_puts_the_pet_to_sleep(qapp, tmp_path):
     app = PetApp(root=build_root(tmp_path))
     app._menu_handlers()["soothe"]()
     assert app.behavior.state == "SLEEP"
     assert app.modules["vitals"]._sleeping is True  # 睡着时活力改为回升
+    app.shutdown()
+
+
+def test_activity_locks_block_side_effects_and_release(qapp, tmp_path, monkeypatch):
+    root = build_root(tmp_path)
+    cfg = load_config(root / "config.json")
+    cfg["modules"]["economy"]["coins"] = 5
+    save_config(root / "config.json", cfg)
+    app = PetApp(root=root)
+    monkeypatch.setattr(pet_main.random, "random", lambda: 1)
+    economy, vitals = app.modules["economy"], app.modules["vitals"]
+    app._toggle_work(True)
+    app._toggle_bricklay(True)
+    app._buy_food("watermelon")
+    app._soothe()
+    app._listen_music()
+    assert economy.working and not economy.bricklaying
+    assert economy.coins == 5 and vitals.mood == 80 and not vitals._sleeping
+    app._toggle_work(False)
+
+    for start, finish in (
+        (app._listen_music, lambda: app.behavior.on_play_finished("music")),
+        (app._blow_bubble, lambda: app.behavior.on_play_finished("bubble")),
+        (app._start_stroll, app.behavior.on_stroll_finished),
+    ):
+        before = vitals.mood
+        start()
+        app._listen_music()
+        app._toggle_bricklay(True)
+        assert app._activity() == "play" and not economy.earning
+        assert vitals.mood == before + 5
+        finish()
+        assert app._activity() is None
+
+    app._soothe()
+    app._buy_food("watermelon")
+    assert app._activity() == "sleep" and economy.coins == 5
+    app._soothe()
+    app._buy_food("watermelon")
+    app._toggle_work(True)
+    assert app._activity() == "food" and not economy.earning and economy.coins == 0
+    app.behavior.on_play_finished("watermelon")
+    app._toggle_bricklay(True)
+    app._toggle_work(True)
+    assert economy.bricklaying and not economy.working
     app.shutdown()
 
 
@@ -292,7 +352,7 @@ def test_show_status_card_pops_with_live_numbers(qapp, tmp_path):
     app = PetApp(root=build_root(tmp_path))
     app._show_status_card()
     assert app.status_card.isVisible() is True
-    assert app.status_card.note_text() == "噜噜币 0"
+    assert app.status_card.note_text() == "0"
     app.shutdown()
 
 
@@ -311,11 +371,11 @@ def test_show_status_card_noop_without_both_modules(qapp, tmp_path):
 def test_status_card_refreshes_while_visible(qapp, tmp_path):
     app = PetApp(root=build_root(tmp_path))
     app._show_status_card()
-    assert app.status_card.note_text() == "噜噜币 0"
+    assert app.status_card.note_text() == "0"
 
     app.modules["economy"]._coins = 55
     app._update_status()  # 心跳每秒都会调它
-    assert app.status_card.note_text() == "噜噜币 55"
+    assert app.status_card.note_text() == "55"
     app.shutdown()
 
 

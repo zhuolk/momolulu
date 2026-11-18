@@ -59,7 +59,7 @@ class MealReminder(Module):
             if key in self._fired:
                 continue
             if self._in_window(now, target):
-                self.ctx.notify(f"{target} 到啦，该吃饭咯", "eat")
+                self.ctx.notify(f"{target} 到啦，该吃饭咯", "anxious")
                 self._fired.add(key)
 
     # ------------------------------------------------------------ 内部
