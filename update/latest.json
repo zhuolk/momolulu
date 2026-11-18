@@ -1,30 +1,22 @@
 {
-  "version": "0.2.9",
-  "notes": "噜噜的浮窗全面统一了观感：气泡、右键菜单、更新提示都换成「状态卡」同款的圆角、阴影与配色，一处改动处处生效。右键菜单最上面新增一条数值摘要——心情 / 活力 / 饱腹三条彩色进度条，外加噜噜币余额（上班中改为显示本班进账），不点开状态卡也能一眼看到噜噜最近怎么样。",
+  "version": "0.3.0",
+  "notes": "",
   "package": {
-    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.2.9/momolulu-0.2.9.zip",
-    "sha256": "24f15d1c5157a99e69942c063c663620a11f9eece87a0b6cc4798b338e30d829",
-    "size": 51475445
+    "url": "https://github.com/zhuolk/momolulu/releases/download/v0.3.0/momolulu-0.3.0.zip",
+    "sha256": "dfa47b1c18371bbac9a1504fd282b1fc9493fc98c8ebd78010b902bc85fda1fb",
+    "size": 52143324
   },
   "assets": {
     "base": "https://raw.githubusercontent.com/zhuolk/momolulu/main/assets/",
     "files": {
       "processed/lulu_001.gif": "d530750b01432d45c2170dd419975538",
-      "processed/lulu_002.gif": "2275752e24edd61aaa5b230fae5177e0",
       "processed/lulu_003.gif": "40ed4f7831d3c40dcb5352424fbbc536",
-      "processed/lulu_004.gif": "27a03d0ef9f47b3876ee605b45d0f5f6",
-      "processed/lulu_005.gif": "c811df1e5e33f9dbf5a81a0e2d5b8bd9",
-      "processed/lulu_006.gif": "a28f636772c46fc13c7ebaf11beb3de4",
-      "processed/lulu_007.gif": "3a26e8d6d0c5f0876380b2d0a092416c",
       "processed/lulu_008.gif": "9f17ebf32c93ee9a6c100d2a7b15bd99",
       "processed/lulu_009.gif": "ab15c78bf0dfdc9c7118012538a0168d",
       "processed/lulu_010.gif": "678f49402ae23be9264a448d18b24f0c",
-      "processed/lulu_011.gif": "daba884874afccfda2db9e822785be37",
-      "processed/lulu_012.gif": "d3c703634b6bb05201af810c78cd71d3",
       "processed/lulu_013.gif": "bc950d0a601db95a2230d1747acd5f8a",
       "processed/lulu_014.gif": "eed000fcf0c0ed611f63d5526f5e7b8b",
       "processed/lulu_015.gif": "cc9386a49bd71d18ecf547efc86c9e1a",
-      "processed/lulu_016.gif": "aa4aef79b3360a3681cb094b82281953",
       "processed/lulu_017.gif": "8001ea5e5cc2a6050774635d1d104e69",
       "processed/lulu_018.gif": "5a4ef2e69d7fb0b17df1d6b9b5a4ca76",
       "processed/lulu_019.gif": "76d6f839b070a9c5b88fb46c79d8745e",
@@ -32,10 +24,22 @@
       "processed/lulu_021.gif": "c87f16384096945d7a66eeb55e067ca0",
       "processed/lulu_022.gif": "5d5fe993c04b009d475079936d3b25d4",
       "processed/lulu_023.gif": "6b046b674f71f464bec034a505871624",
-      "processed/lulu_024.gif": "11b0f07844f20ae85afde91287449988",
       "processed/lulu_025.gif": "368bd65e15dfb02e0ca9b0a5a328865e",
       "processed/lulu_026.gif": "9df36bcc1e05b50ae64cafa7fac94e51",
-      "categories.json": "a65812c80ff138de36e084c030d950bb"
+      "processed/lulu_027.gif": "80c37b2f3216474fd5ce0c6d18e51039",
+      "processed/lulu_028.gif": "6a7b44e946b9ec8a33a17770069a3875",
+      "processed/lulu_029.gif": "5b6e691f6bf8cb4d9eedc2f6507d05a5",
+      "processed/lulu_030.gif": "31232ae46303145d705287e351289b0c",
+      "processed/lulu_031.gif": "366dd852e6bcecc34d709c0c2b5d3e3b",
+      "processed/lulu_032.gif": "228a8408dac55828f5ad093ff1081463",
+      "processed/lulu_033.gif": "fbc2ecde04527c5391a28526935b6711",
+      "processed/lulu_034.gif": "e32eef2504827298984e51e1c60b944a",
+      "processed/lulu_035.gif": "9f7ab5452ca57528aabf1ae7e276d0ed",
+      "processed/lulu_036.gif": "6011d614896afbfa2070992f02c463ef",
+      "processed/lulu_039.gif": "cb17aebc90b1d070f1895f21f37abd78",
+      "processed/lulu_040.gif": "be8960ec1d9869c8e6a9e2cf33e4fdc6",
+      "processed/lulu_041.gif": "77c90595b7104f8d10e9f0650a7a37f5",
+      "categories.json": "e4e1e6ad5d3248b55a0d88e1b427c9f5"
     }
   }
 }
